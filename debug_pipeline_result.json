@@ -1,210 +1,137 @@
 {
-  "userProfile": {
-    "depth_1": {
-      "username": "chintan_dev",
-      "depth_2": {
-        "personal": {
-          "age": 25
-        },
-        "depth_3": {
-          "skills": [
-            "React",
-            "Next.js"
-          ],
-          "depth_4": {
-            "experience": {
-              "years": 3
-            },
-            "depth_5": {
-              "preferences": {
-                "theme": "dark"
-              },
-              "depth_6": {
-                "devices": {
-                  "primary": "MacBook"
-                },
-                "depth_7": {
-                  "subscriptions": {
-                    "chatgpt": true
-                  },
-                  "depth_8": {
-                    "socials": {
-                      "linkedin": "active"
-                    },
-                    "depth_9": {
-                      "achievements": {
-                        "hackathons": 5
-                      },
-                      "depth_10": {
-                        "futureGoals": {
-                          "role": "SDE2",
-                          "location": "Dubai"
-                        }
-                      }
-                    }
-                  },
-                  "project": {
-                    "level_1": {
-                      "id": "PRJ-001",
-                      "level_2": {
-                        "name": "AI Workflow Engine",
-                        "level_3": {
-                          "environment": "production",
-                          "level_4": {
-                            "region": "ap-south-1",
-                            "level_5": {
-                              "services": {
-                                "auth": true,
-                                "db": true
-                              },
-                              "level_6": {
-                                "database": {
-                                  "type": "postgresql",
-                                  "version": "16"
-                                },
-                                "level_7": {
-                                  "cache": {
-                                    "enabled": true,
-                                    "provider": "redis"
-                                  },
-                                  "level_8": {
-                                    "monitoring": {
-                                      "tool": "grafana"
-                                    },
-                                    "level_9": {
-                                      "alerts": {
-                                        "email": true,
-                                        "slack": true
-                                      },
-                                      "level_10": {
-                                        "deployment": {
-                                          "strategy": "blue-green",
-                                          "status": "active"
+  "companyId": "COMP_1001",
+  "companyName": "TechNova Global",
+  "headOffice": {
+    "country": "India",
+    "state": "Gujarat",
+    "city": "Ahmedabad",
+    "building": {
+      "name": "Titanium Tower",
+      "floors": {
+        "floor_1": {
+          "departments": {
+            "engineering": {
+              "teams": {
+                "backend": {
+                  "projects": {
+                    "project_alpha": {
+                      "modules": {
+                        "authentication": {
+                          "services": {
+                            "oauthService": {
+                              "versions": {
+                                "v1": {
+                                  "status": "deprecated",
+                                  "logs": {
+                                    "2026": {
+                                      "january": {
+                                        "week1": {
+                                          "day1": {
+                                            "errors": {
+                                              "critical": {
+                                                "server": {
+                                                  "node": {
+                                                    "metrics": {
+                                                      "cpu": {
+                                                        "usage": {
+                                                          "peak": {
+                                                            "percentage": 91
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
                                         }
                                       }
                                     }
                                   }
                                 }
-                              },
-                              "ecommerce": {
-                                "node_1": {
-                                  "store": "TechWorld",
-                                  "node_2": {
-                                    "categories": [
-                                      "laptop",
-                                      "mobile"
-                                    ],
-                                    "node_3": {
-                                      "inventory": {
-                                        "count": 500
-                                      },
-                                      "node_4": {
-                                        "warehouse": {
-                                          "city": "Ahmedabad"
-                                        },
-                                        "node_5": {
-                                          "shipping": {
-                                            "partner": "Delhivery"
-                                          },
-                                          "node_6": {
-                                            "payments": {
-                                              "upi": true
-                                            },
-                                            "node_7": {
-                                              "offers": {
-                                                "festival": "Diwali"
-                                              },
-                                              "node_8": {
-                                                "analytics": {
-                                                  "enabled": true
-                                                },
-                                                "node_9": {
-                                                  "fraudDetection": {
-                                                    "status": "running"
-                                                  },
-                                                  "node_10": {
-                                                    "backup": {
-                                                      "frequency": "daily"
-                                                    }
-                                                  },
-                                                  "gamingServer": {
-                                                    "stage_1": {
-                                                      "game": "CyberArena",
-                                                      "stage_2": {
-                                                        "playersOnline": 1200,
-                                                        "stage_3": {
-                                                          "maps": [
-                                                            "desert",
-                                                            "snow"
-                                                          ],
-                                                          "stage_4": {
-                                                            "ranking": {
-                                                              "mode": "competitive"
-                                                            },
-                                                            "stage_5": {
-                                                              "antiCheat": {
-                                                                "enabled": true
-                                                              },
-                                                              "stage_6": {
-                                                                "voiceChat": {
-                                                                  "provider": "discord"
-                                                                },
-                                                                "stage_7": {
-                                                                  "events": {
-                                                                    "weekendCup": true
-                                                                  },
-                                                                  "stage_8": {
-                                                                    "mods": {
-                                                                      "supported": true
-                                                                    },
-                                                                    "stage_9": {
-                                                                      "streaming": {
-                                                                        "twitchIntegration": true
-                                                                      },
-                                                                      "stage_10": {
-                                                                        "serverScaling": {
-                                                                          "autoScale": true
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "platformId": "ECOM_9001",
+                      "platformName": "MegaCart",
+                      "regions": {
+                        "india": {
+                          "warehouses": {
+                            "gujarat": {
+                              "cities": {
+                                "surat": {
+                                  "inventory": {
+                                    "electronics": {
+                                      "mobiles": {
+                                        "apple": {
+                                          "iphone_15": {
+                                            "variants": {
+                                              "black_256": {
+                                                "supplier": {
+                                                  "supplierId": "SUP_001",
+                                                  "shipping": {
+                                                    "domestic": {
+                                                      "express": {
+                                                        "tracking": {
+                                                          "liveStatus": {
+                                                            "hub": {
+                                                              "vehicle": {
+                                                                "driver": {
+                                                                  "performance": {
+                                                                    "ratings": {
+                                                                      "monthly": {
+                                                                        "march": {
+                                                                          "week3": {
+                                                                            "deliveries": {
+                                                                              "completed": 340
+                                                                            }
+                                                                          }
                                                                         }
                                                                       }
-                                                                    },
-                                                                    "blockchainNetwork": {
-                                                                      "chain_1": {
-                                                                        "network": "Polygon",
-                                                                        "chain_2": {
-                                                                          "rpc": {
-                                                                            "url": "https://rpc.polygon.io"
-                                                                          },
-                                                                          "chain_3": {
-                                                                            "contracts": {
-                                                                              "erc20": true
-                                                                            },
-                                                                            "chain_4": {
-                                                                              "wallets": {
-                                                                                "metamask": true
-                                                                              },
-                                                                              "chain_5": {
-                                                                                "tokens": {
-                                                                                  "count": 120
-                                                                                },
-                                                                                "chain_6": {
-                                                                                  "validators": {
-                                                                                    "active": 100
-                                                                                  },
-                                                                                  "chain_7": {
-                                                                                    "staking": {
-                                                                                      "enabled": true
-                                                                                    },
-                                                                                    "chain_8": {
-                                                                                      "bridges": {
-                                                                                        "ethereum": true
-                                                                                      },
-                                                                                      "chain_9": {
-                                                                                        "security": {
-                                                                                          "audit": "passed"
-                                                                                        },
-                                                                                        "chain_10": {
-                                                                                          "governance": {
-                                                                                            "dao": "enabled"
+                                                                    }
+                                                                  }
+                                                                }
+                                                              }
+                                                            }
+                                                          },
+                                                          "cloudProvider": "NeuroCloud",
+                                                          "regions": {
+                                                            "asia": {
+                                                              "india": {
+                                                                "datacenters": {
+                                                                  "dc_mumbai_01": {
+                                                                    "clusters": {
+                                                                      "cluster_alpha": {
+                                                                        "servers": {
+                                                                          "server_88": {
+                                                                            "containers": {
+                                                                              "kubernetes": {
+                                                                                "pods": {
+                                                                                  "ai_training": {
+                                                                                    "models": {
+                                                                                      "gpt_custom": {
+                                                                                        "training": {
+                                                                                          "epochs": {
+                                                                                            "epoch_40": {
+                                                                                              "metrics": {
+                                                                                                "loss": {
+                                                                                                  "validation": {
+                                                                                                    "historical": {
+                                                                                                      "daily": {
+                                                                                                        "hourly": {
+                                                                                                          "minuteWise": {
+                                                                                                            "accuracy": 98.4
+                                                                                                          }
+                                                                                                        }
+                                                                                                      }
+                                                                                                    }
+                                                                                                  }
+                                                                                                }
+                                                                                              }
+                                                                                            }
                                                                                           }
                                                                                         }
                                                                                       }
@@ -250,12 +177,63 @@
       }
     }
   },
+  "__depth_count": 54,
+  "__finalAnalytics": {
+    "name": "finalAnalytics",
+    "timestamp": "2026-05-14T10:46:02.955Z",
+    "include": [
+      "counts",
+      "groups",
+      "summaries"
+    ]
+  },
   "__transforms": [
+    {
+      "op": "sort",
+      "status": "no_items",
+      "collection": "deliveries"
+    },
+    {
+      "op": "sort",
+      "status": "no_items",
+      "collection": "aiModels"
+    },
+    {
+      "op": "filter",
+      "collection": "transactions",
+      "count": 0,
+      "results": []
+    },
     {
       "op": "group",
       "collection": "analytics",
-      "by": "enabled",
+      "by": "month",
       "groups": {}
+    },
+    {
+      "op": "depth_count",
+      "maxDepth": 54
+    },
+    {
+      "op": "deduplicate",
+      "collection": "suppliers",
+      "original": 0,
+      "deduplicated": 0,
+      "results": []
+    },
+    {
+      "op": "flatten",
+      "path": "nested.metadata",
+      "status": "path_not_found"
+    },
+    {
+      "op": "aggregate",
+      "name": "finalAnalytics",
+      "keys": [
+        "name",
+        "timestamp",
+        "include"
+      ]
     }
   ]
 }

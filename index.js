@@ -33,18 +33,17 @@ const upload = multer({
   }
 });
 
-const allowedOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
-  : ['http://localhost:5173', 'http://localhost:4173'];
+// const allowedOrigins = process.env.CORS_ORIGIN
+//   ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+//   : ['http://localhost:5173', 'http://localhost:4173'];
 
 app.use(cors({
-  origin: (origin, cb) => {
-    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
-    cb(new Error('Not allowed by CORS'));
-  },
-  methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type']
+  origin: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  credentials: true
 }));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -96,7 +95,14 @@ const PIPELINE_INSTRUCTIONS = await fs.readFile(
   return '';
 });
 
-console.log(`[CONFIG] light=${AI_MODEL_LIGHT}, merge=${AI_MODEL_MERGE}, instructions=${MERGE_INSTRUCTIONS.length} chars, standardize=${STANDARDIZE_PROMPT.length} chars, join=${JOIN_INSTRUCTIONS.length} chars, pipeline=${PIPELINE_INSTRUCTIONS.length} chars`);
+const UNDERSTANDING_INSTRUCTIONS = await fs.readFile(
+  path.join(process.cwd(), 'understanding_instructions.txt'), 'utf-8'
+).catch(() => {
+  console.error('[WARN] understanding_instructions.txt not found, using fallback');
+  return '';
+});
+
+console.log(`[CONFIG] light=${AI_MODEL_LIGHT}, merge=${AI_MODEL_MERGE}, instructions=${MERGE_INSTRUCTIONS.length} chars, standardize=${STANDARDIZE_PROMPT.length} chars, join=${JOIN_INSTRUCTIONS.length} chars, pipeline=${PIPELINE_INSTRUCTIONS.length} chars, understanding=${UNDERSTANDING_INSTRUCTIONS.length} chars`);
 
 // ─────────────────────────────────────────────
 // UTILS
@@ -138,6 +144,26 @@ const deepMerge = (target, source) => {
     return out;
   }
   return source;
+};
+
+const INTERNAL_OUTPUT_KEYS = new Set([
+  '__depth_count',
+  '__transforms',
+  '__finalAnalytics',
+  '__finalSummary'
+]);
+
+const stripInternalOutputFields = (data) => {
+  if (Array.isArray(data)) return data.map(stripInternalOutputFields);
+  if (isPlainObject(data)) {
+    const out = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (INTERNAL_OUTPUT_KEYS.has(key)) continue;
+      out[key] = stripInternalOutputFields(value);
+    }
+    return out;
+  }
+  return data;
 };
 
 const getAtPath = (obj, pathArr) => {
@@ -350,11 +376,1100 @@ const extractMentionedSourceIds = (promptText) => {
   return [...ids];
 };
 
+const buildSourceAliases = (sourceId, sourceName = '') => {
+  const aliases = new Set([sourceId]);
+  const sourceNumber = String(sourceId).match(/SOURCE_(\d+)/i)?.[1];
+
+  if (sourceNumber) {
+    aliases.add(`Source ${sourceNumber}`);
+    aliases.add(`@Source ${sourceNumber}`);
+    aliases.add(`Source${sourceNumber}`);
+    aliases.add(`@Source${sourceNumber}`);
+  }
+
+  const trimmedName = String(sourceName || '').trim();
+  if (trimmedName) {
+    aliases.add(trimmedName);
+    aliases.add(`@${trimmedName}`);
+
+    const basename = trimmedName.replace(/\.[^.]+$/, '').trim();
+    if (basename && basename !== trimmedName) {
+      aliases.add(basename);
+      aliases.add(`@${basename}`);
+    }
+  }
+
+  return [...aliases];
+};
+
+const buildSourceReferenceGuide = (sourceNames) =>
+  Object.entries(sourceNames)
+    .map(([sourceId, sourceName]) =>
+      `- ${sourceId}: display_name=${JSON.stringify(sourceName)}, aliases=${JSON.stringify(buildSourceAliases(sourceId, sourceName))}`
+    )
+    .join('\n');
+
+const buildAiSourceContext = (sources, sourceNames) => ({
+  sourceReferenceGuide: buildSourceReferenceGuide(sourceNames),
+  compressedSources: Object.entries(sources)
+    .map(([id, obj]) => {
+      const name = sourceNames[id] || id;
+      return `### ${name} (ID: ${id})\n${JSON.stringify(compressJson(obj), null, 2)}`;
+    })
+    .join('\n\n')
+});
+
 // ─────────────────────────────────────────────
 // FIX ③ — FULL OPERATION PARSERS
 // extractDynamicQuery now returns ALL operation
 // types: filter, group, sort, select, count, unique
 // ─────────────────────────────────────────────
+
+const splitTopLevelComma = (text) => {
+  const parts = [];
+  let current = '';
+  let quote = null;
+  let bracketDepth = 0;
+
+  for (const ch of text) {
+    if (quote) {
+      current += ch;
+      if (ch === quote) quote = null;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+
+    if (ch === '[' || ch === '(' || ch === '{') bracketDepth++;
+    if (ch === ']' || ch === ')' || ch === '}') bracketDepth--;
+
+    // Split on comma OR newline at top level
+    if ((ch === ',' || ch === '\n') && bracketDepth === 0) {
+      if (current.trim()) parts.push(current.trim());
+      current = '';
+      continue;
+    }
+
+    // Skip carriage return
+    if (ch === '\r') continue;
+
+    current += ch;
+  }
+
+  if (current.trim()) parts.push(current.trim());
+  return parts;
+};
+
+const splitFirstColon = (text) => {
+  let quote = null;
+  let bracketDepth = 0;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote) {
+      if (ch === quote) quote = null;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+
+    if (ch === '[' || ch === '(' || ch === '{') bracketDepth++;
+    if (ch === ']' || ch === ')' || ch === '}') bracketDepth--;
+    if (ch === ':' && bracketDepth === 0) return [text.slice(0, i), text.slice(i + 1)];
+  }
+
+  return null;
+};
+
+const normalizeComposeKey = (key) =>
+  String(key || '').trim().replace(/^["']|["']$/g, '').trim();
+
+const resolveSourceReference = (rawRef, sources, sourceNames) => {
+  const ref = String(rawRef || '').trim().replace(/^@/, '');
+  const sourceMatch = ref.match(/^source\s*[_-]?\s*(\d+)\b/i);
+  if (sourceMatch) return `SOURCE_${sourceMatch[1]}`;
+
+  for (const [sourceId, sourceName] of Object.entries(sourceNames)) {
+    const aliases = buildSourceAliases(sourceId, sourceName).map(a =>
+      String(a).replace(/^@/, '').toLowerCase()
+    );
+    if (aliases.includes(ref.toLowerCase())) return sourceId;
+  }
+
+  return sources[ref] ? ref : null;
+};
+
+const readCaseInsensitivePath = (data, pathArr) => {
+  let value = data;
+  for (const seg of pathArr) {
+    if (value === null || value === undefined) return undefined;
+    if (Array.isArray(value) && !Number.isNaN(Number(seg))) {
+      value = value[Number(seg)];
+      continue;
+    }
+    if (isPlainObject(value)) {
+      const actualKey = Object.keys(value).find(k => k.toLowerCase() === String(seg).toLowerCase());
+      value = actualKey ? value[actualKey] : undefined;
+      continue;
+    }
+    return undefined;
+  }
+  return value;
+};
+
+const normalizePathSegment = (seg) => String(seg).toLowerCase();
+
+const pathEndsWith = (candidatePath, requestedPath) => {
+  if (requestedPath.length > candidatePath.length) return false;
+  const offset = candidatePath.length - requestedPath.length;
+  return requestedPath.every((seg, i) =>
+    normalizePathSegment(candidatePath[offset + i]) === normalizePathSegment(seg)
+  );
+};
+
+const findPathBySuffix = (data, requestedPath) => {
+  let found = null;
+  traverse(data, (node, pathArr) => {
+    if (found) return;
+    if (pathEndsWith(pathArr, requestedPath)) found = pathArr;
+  });
+  return found;
+};
+
+const findFirstDescendantWithKey = (node, targetKey) => {
+  const targetLower = normalizePathSegment(targetKey);
+  let found = null;
+
+  traverse(node, (child, pathArr) => {
+    if (found || pathArr.length === 0) return;
+    const last = pathArr[pathArr.length - 1];
+    if (normalizePathSegment(last) === targetLower) found = { pathArr, value: child };
+  });
+
+  return found;
+};
+
+const readFlexiblePath = (data, pathArr) => {
+  if (!Array.isArray(pathArr) || pathArr.length === 0) {
+    return { value: data, resolvedPath: [] };
+  }
+
+  const directValue = readCaseInsensitivePath(data, pathArr);
+  if (directValue !== undefined) return { value: directValue, resolvedPath: pathArr };
+
+  const suffixPath = findPathBySuffix(data, pathArr);
+  if (suffixPath) {
+    return {
+      value: readCaseInsensitivePath(data, suffixPath),
+      resolvedPath: suffixPath
+    };
+  }
+
+  let current = data;
+  const resolvedPath = [];
+  for (const seg of pathArr) {
+    if (current === null || current === undefined) return { value: undefined, resolvedPath };
+
+    if (Array.isArray(current) && !Number.isNaN(Number(seg))) {
+      const idx = Number(seg);
+      current = current[idx];
+      resolvedPath.push(String(idx));
+      continue;
+    }
+
+    if (isPlainObject(current)) {
+      const actualKey = Object.keys(current).find(k => k.toLowerCase() === String(seg).toLowerCase());
+      if (actualKey) {
+        current = current[actualKey];
+        resolvedPath.push(actualKey);
+        continue;
+      }
+    }
+
+    if (Number.isNaN(Number(seg))) {
+      const descendant = findFirstDescendantWithKey(current, seg);
+      if (!descendant) return { value: undefined, resolvedPath };
+      current = descendant.value;
+      resolvedPath.push(...descendant.pathArr);
+      continue;
+    }
+
+    return { value: undefined, resolvedPath };
+  }
+
+  return { value: current, resolvedPath };
+};
+
+const setCaseInsensitivePath = (data, pathArr, value) => {
+  if (!Array.isArray(pathArr) || pathArr.length === 0) return value;
+
+  let current = data;
+  for (let i = 0; i < pathArr.length - 1; i++) {
+    const seg = String(pathArr[i]);
+    if (Array.isArray(current) && !Number.isNaN(Number(seg))) {
+      const idx = Number(seg);
+      if (!isPlainObject(current[idx]) && !Array.isArray(current[idx])) current[idx] = {};
+      current = current[idx];
+      continue;
+    }
+
+    if (!isPlainObject(current)) {
+      throw new Error(`Cannot set path through non-object segment "${seg}"`);
+    }
+
+    const actualKey = Object.keys(current).find(k => k.toLowerCase() === seg.toLowerCase()) || seg;
+    if (!isPlainObject(current[actualKey]) && !Array.isArray(current[actualKey])) current[actualKey] = {};
+    current = current[actualKey];
+  }
+
+  const lastSeg = String(pathArr[pathArr.length - 1]);
+  if (Array.isArray(current) && !Number.isNaN(Number(lastSeg))) {
+    current[Number(lastSeg)] = value;
+    return data;
+  }
+
+  if (!isPlainObject(current)) {
+    throw new Error(`Cannot set final path on non-object segment "${lastSeg}"`);
+  }
+
+  const actualLastKey = Object.keys(current).find(k => k.toLowerCase() === lastSeg.toLowerCase()) || lastSeg;
+  current[actualLastKey] = value;
+  return data;
+};
+
+// ─────────────────────────────────────────
+// ADVANCED PATH EVALUATION WITH ARRAY OPERATIONS
+// Supports: filtering, sorting, slicing, mapping, first/last/count
+// ─────────────────────────────────────────
+
+const evaluateArrayOperation = (arr, operation) => {
+  if (!Array.isArray(arr)) return arr;
+  
+  const op = String(operation || '').trim();
+  
+  // Sort operations: sort(asc:field) or sort(desc:field)
+  const sortMatch = op.match(/^sort\s*\(\s*(asc|desc)\s*:\s*([^)]+)\s*\)$/i);
+  if (sortMatch) {
+    const direction = sortMatch[1].toLowerCase();
+    const field = sortMatch[2].trim();
+    const sorted = [...arr].sort((a, b) => {
+      const valA = readCaseInsensitivePath(a, field.split('.'));
+      const valB = readCaseInsensitivePath(b, field.split('.'));
+      if (valA === valB) return 0;
+      if (valA === undefined) return 1;
+      if (valB === undefined) return -1;
+      const cmp = valA < valB ? -1 : 1;
+      return direction === 'asc' ? cmp : -cmp;
+    });
+    console.log(`[ARRAY OP] sort(${direction}:${field}) -> ${sorted.length} items`);
+    return sorted;
+  }
+  
+  // Filter operations: filter(field=value), filter(field>value), filter(field<value)
+  const filterMatch = op.match(/^filter\s*\(\s*([^=<>!]+)\s*(=|!=|>|<|>=|<=)\s*([^)]+)\s*\)$/i);
+  if (filterMatch) {
+    const field = filterMatch[1].trim();
+    const operator = filterMatch[2];
+    let compareValue = filterMatch[3].trim();
+    
+    // Try to parse as number
+    const numValue = Number(compareValue);
+    if (!isNaN(numValue)) compareValue = numValue;
+    // Remove quotes if string
+    if (typeof compareValue === 'string' && /^["'].*["']$/.test(compareValue)) {
+      compareValue = compareValue.slice(1, -1);
+    }
+    
+    const filtered = arr.filter(item => {
+      const val = readCaseInsensitivePath(item, field.split('.'));
+      switch (operator) {
+        case '=': return val == compareValue;
+        case '!=': return val != compareValue;
+        case '>': return val > compareValue;
+        case '<': return val < compareValue;
+        case '>=': return val >= compareValue;
+        case '<=': return val <= compareValue;
+        default: return true;
+      }
+    });
+    console.log(`[ARRAY OP] filter(${field}${operator}${compareValue}) -> ${filtered.length} of ${arr.length}`);
+    return filtered;
+  }
+  
+  // Slice: slice(start, end) or slice(start)
+  const sliceMatch = op.match(/^slice\s*\(\s*(-?\d+)\s*(?:,\s*(-?\d+))?\s*\)$/i);
+  if (sliceMatch) {
+    const start = parseInt(sliceMatch[1], 10);
+    const end = sliceMatch[2] ? parseInt(sliceMatch[2], 10) : undefined;
+    const sliced = end !== undefined ? arr.slice(start, end) : arr.slice(start);
+    console.log(`[ARRAY OP] slice(${start}${end !== undefined ? ',' + end : ''}) -> ${sliced.length} items`);
+    return sliced;
+  }
+  
+  // First N: first(n) or first
+  const firstMatch = op.match(/^first\s*(?:\(\s*(\d+)\s*\))?$/i);
+  if (firstMatch) {
+    const n = firstMatch[1] ? parseInt(firstMatch[1], 10) : 1;
+    const result = n === 1 ? arr[0] : arr.slice(0, n);
+    console.log(`[ARRAY OP] first(${n})`);
+    return result;
+  }
+  
+  // Last N: last(n) or last
+  const lastMatch = op.match(/^last\s*(?:\(\s*(\d+)\s*\))?$/i);
+  if (lastMatch) {
+    const n = lastMatch[1] ? parseInt(lastMatch[1], 10) : 1;
+    const result = n === 1 ? arr[arr.length - 1] : arr.slice(-n);
+    console.log(`[ARRAY OP] last(${n})`);
+    return result;
+  }
+  
+  // Count/Length
+  if (/^(count|length|size)$/i.test(op)) {
+    console.log(`[ARRAY OP] ${op} -> ${arr.length}`);
+    return arr.length;
+  }
+  
+  // Reverse
+  if (/^reverse$/i.test(op)) {
+    console.log(`[ARRAY OP] reverse -> ${arr.length} items`);
+    return [...arr].reverse();
+  }
+  
+  // Unique (dedupe by JSON stringify)
+  if (/^unique$/i.test(op)) {
+    const seen = new Set();
+    const unique = arr.filter(item => {
+      const key = JSON.stringify(item);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    console.log(`[ARRAY OP] unique -> ${unique.length} of ${arr.length}`);
+    return unique;
+  }
+  
+  // Flatten
+  if (/^flatten$/i.test(op)) {
+    const flattened = arr.flat(Infinity);
+    console.log(`[ARRAY OP] flatten -> ${flattened.length} items`);
+    return flattened;
+  }
+  
+  return arr;
+};
+
+const evaluateAdvancedPath = (data, pathExpression) => {
+  const expr = String(pathExpression || '').trim();
+  if (!expr) return { value: data, resolvedPath: [] };
+  
+  // Tokenize the path expression
+  // Supports: path.to.array.filter(x=y).sort(asc:field).first
+  const tokens = [];
+  let current = '';
+  let parenDepth = 0;
+  let bracketDepth = 0;
+  
+  for (let i = 0; i < expr.length; i++) {
+    const ch = expr[i];
+    
+    if (ch === '(') parenDepth++;
+    if (ch === ')') parenDepth--;
+    if (ch === '[') bracketDepth++;
+    if (ch === ']') bracketDepth--;
+    
+    if (ch === '.' && parenDepth === 0 && bracketDepth === 0) {
+      if (current.trim()) tokens.push(current.trim());
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) tokens.push(current.trim());
+  
+  let value = data;
+  const resolvedPath = [];
+  
+  for (const token of tokens) {
+    if (value === null || value === undefined) break;
+    
+    // Check if token is an array operation
+    if (/^(sort|filter|slice|first|last|count|length|size|reverse|unique|flatten)\s*(\(|$)/i.test(token)) {
+      value = evaluateArrayOperation(value, token);
+      resolvedPath.push(token);
+      continue;
+    }
+    
+    // Check for array index: items[0] or items[-1]
+    const indexMatch = token.match(/^([^\[]+)\[(-?\d+)\]$/);
+    if (indexMatch) {
+      const key = indexMatch[1];
+      const idx = parseInt(indexMatch[2], 10);
+      
+      // First access the key
+      if (key) {
+        if (isPlainObject(value)) {
+          const actualKey = Object.keys(value).find(k => k.toLowerCase() === key.toLowerCase());
+          value = actualKey ? value[actualKey] : undefined;
+          resolvedPath.push(actualKey || key);
+        } else {
+          value = undefined;
+        }
+      }
+      
+      // Then access the index
+      if (Array.isArray(value)) {
+        const actualIdx = idx < 0 ? value.length + idx : idx;
+        value = value[actualIdx];
+        resolvedPath.push(String(actualIdx));
+      }
+      continue;
+    }
+    
+    // Check for array filter: items[field=value]
+    const filterMatch = token.match(/^([^\[]*)\[([^\]]+)\]$/);
+    if (filterMatch && !/^\d+$/.test(filterMatch[2])) {
+      const key = filterMatch[1];
+      const filterExpr = filterMatch[2];
+      
+      // First access the key if present
+      if (key) {
+        if (isPlainObject(value)) {
+          const actualKey = Object.keys(value).find(k => k.toLowerCase() === key.toLowerCase());
+          value = actualKey ? value[actualKey] : undefined;
+          resolvedPath.push(actualKey || key);
+        }
+      }
+      
+      // Apply filter if array
+      if (Array.isArray(value)) {
+        // Check for comparison: field=value, field>value, etc.
+        const compMatch = filterExpr.match(/^([^=<>!]+)(=|!=|>|<|>=|<=)(.+)$/);
+        if (compMatch) {
+          const field = compMatch[1].trim();
+          const op = compMatch[2];
+          let compareVal = compMatch[3].trim();
+          
+          // Parse value
+          if (!isNaN(Number(compareVal))) compareVal = Number(compareVal);
+          if (typeof compareVal === 'string' && /^["'].*["']$/.test(compareVal)) {
+            compareVal = compareVal.slice(1, -1);
+          }
+          
+          value = value.filter(item => {
+            const itemVal = readCaseInsensitivePath(item, field.split('.'));
+            switch (op) {
+              case '=': return itemVal == compareVal;
+              case '!=': return itemVal != compareVal;
+              case '>': return itemVal > compareVal;
+              case '<': return itemVal < compareVal;
+              case '>=': return itemVal >= compareVal;
+              case '<=': return itemVal <= compareVal;
+              default: return true;
+            }
+          });
+          console.log(`[PATH] filter ${key}[${filterExpr}] -> ${value.length} items`);
+          resolvedPath.push(`[${filterExpr}]`);
+        } else if (filterExpr === '*') {
+          // Wildcard - keep all (used for mapping)
+          resolvedPath.push('[*]');
+        }
+      }
+      continue;
+    }
+    
+    // Check for map operation: [*] followed by property
+    if (Array.isArray(value) && resolvedPath[resolvedPath.length - 1] === '[*]') {
+      // Map: extract property from each item
+      value = value.map(item => readCaseInsensitivePath(item, [token])).filter(v => v !== undefined);
+      resolvedPath.push(token);
+      console.log(`[PATH] map [*].${token} -> ${value.length} values`);
+      continue;
+    }
+    
+    // Regular property access
+    if (isPlainObject(value)) {
+      const actualKey = Object.keys(value).find(k => k.toLowerCase() === token.toLowerCase());
+      if (actualKey) {
+        value = value[actualKey];
+        resolvedPath.push(actualKey);
+      } else {
+        // Try flexible path (find key anywhere in descendants)
+        const descendant = findFirstDescendantWithKey(value, token);
+        if (descendant) {
+          value = descendant.value;
+          resolvedPath.push(...descendant.pathArr);
+        } else {
+          value = undefined;
+        }
+      }
+    } else if (Array.isArray(value)) {
+      // If accessing property on array, map it
+      value = value.map(item => readCaseInsensitivePath(item, [token])).filter(v => v !== undefined);
+      resolvedPath.push(token);
+    } else {
+      value = undefined;
+    }
+  }
+  
+  return { value, resolvedPath };
+};
+
+const parsePathExpression = (rawPath) => {
+  const trimmed = String(rawPath || '').trim();
+  if (!trimmed) return [];
+
+  if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(trimmed.replace(/'/g, '"'));
+      if (Array.isArray(parsed)) return parsed.map(String);
+    } catch {}
+  }
+
+  return trimmed
+    .replace(/^\./, '')
+    .replace(/\[(\d+)\]/g, '.$1')
+    .split('.')
+    .map(s => s.trim())
+    .filter(Boolean);
+};
+
+const splitSourceValueExpression = (valueExpression, sourceNames) => {
+  const expression = String(valueExpression || '').trim();
+  const lowerExpression = expression.toLowerCase();
+  const candidates = [];
+
+  for (const [sourceId, sourceName] of Object.entries(sourceNames)) {
+    for (const alias of buildSourceAliases(sourceId, sourceName)) {
+      candidates.push({ sourceId, alias });
+    }
+  }
+
+  candidates.sort((a, b) => b.alias.length - a.alias.length);
+
+  for (const { sourceId, alias } of candidates) {
+    const lowerAlias = alias.toLowerCase();
+    if (
+      lowerExpression === lowerAlias ||
+      lowerExpression.startsWith(`${lowerAlias}.`) ||
+      lowerExpression.startsWith(`${lowerAlias} `) ||
+      lowerExpression.startsWith(`${lowerAlias}[`)
+    ) {
+      return {
+        sourceId,
+        pathExpression: expression.slice(alias.length).trim()
+      };
+    }
+  }
+
+  return null;
+};
+
+const tryObjectCompositionPrompt = (promptText, sources, sourceNames) => {
+  const text = String(promptText || '').trim();
+  const isWrappedObject = text.startsWith('{') && text.endsWith('}');
+  const hasMappingSyntax = /(?:^|[,\r\n])\s*["']?[A-Za-z0-9_-]+["']?\s*:\s*@/i.test(text);
+  if (!isWrappedObject && !hasMappingSyntax) return null;
+
+  const body = isWrappedObject ? text.slice(1, -1).trim() : text;
+  if (!body) return null;
+
+  const result = {};
+  const entries = splitTopLevelComma(body);
+  if (entries.length === 0) return null;
+  const baseAssignments = [];
+  const pendingInjections = [];
+
+  for (const entry of entries) {
+    const pair = splitFirstColon(entry);
+    if (!pair) return null;
+
+    const key = normalizeComposeKey(pair[0]);
+    if (!key) return null;
+
+    const valueExpression = pair[1].trim();
+
+    if (key.startsWith('@')) {
+      pendingInjections.push({ targetExpression: key, valueExpression });
+      continue;
+    }
+
+    const sourceExpression = splitSourceValueExpression(valueExpression, sourceNames);
+    if (!sourceExpression) return null;
+    const sourceId = resolveSourceReference(sourceExpression.sourceId, sources, sourceNames);
+    if (!sourceId || !sources[sourceId]) return null;
+
+    const pathExpr = sourceExpression.pathExpression;
+    
+    // Use advanced path evaluation for complex expressions with operations
+    let value;
+    if (pathExpr) {
+      // Try advanced evaluation first (supports filter, sort, etc.)
+      const advResult = evaluateAdvancedPath(sources[sourceId], pathExpr);
+      if (advResult.value !== undefined) {
+        value = advResult.value;
+        console.log(`[COMPOSE] "${key}": advanced path ${pathExpr} -> ${advResult.resolvedPath.join('.')}`);
+      } else {
+        // Fallback to flexible path
+        const pathArr = parsePathExpression(pathExpr);
+        const flexResult = readFlexiblePath(sources[sourceId], pathArr);
+        value = flexResult.value;
+        if (value !== undefined) {
+          console.log(`[COMPOSE] "${key}": resolved path ${pathArr.join('.')} -> ${flexResult.resolvedPath.join('.')}`);
+        }
+      }
+    } else {
+      value = sources[sourceId];
+    }
+
+    if (value === undefined) {
+      throw new Error(`Path not found for "${key}": ${sourceExpression.pathExpression}. Check if the path exists in your data.`);
+    }
+
+    result[key] = structuredClone(value);
+    baseAssignments.push({ key, sourceId, pathExpr, data: result[key] });
+  }
+
+  for (const injection of pendingInjections) {
+    const target = splitSourceAndPathExpression(injection.targetExpression);
+    if (!target) return null;
+
+    const targetSourceId = resolveSourceReference(target.sourceId, sources, sourceNames);
+    if (!targetSourceId) return null;
+
+    const valueSourceExpression = splitSourceValueExpression(injection.valueExpression, sourceNames);
+    if (!valueSourceExpression) return null;
+
+    const valueSourceId = resolveSourceReference(valueSourceExpression.sourceId, sources, sourceNames);
+    if (!valueSourceId || !sources[valueSourceId]) return null;
+
+    const injectionPath = parsePathExpression(target.pathExpression);
+    if (injectionPath.length === 0) {
+      throw new Error(`Injection path is required: ${injection.targetExpression}`);
+    }
+
+    const valuePathExpr = valueSourceExpression.pathExpression;
+    let injectionValue = sources[valueSourceId];
+    if (valuePathExpr) {
+      const resolved = evaluateAdvancedPath(sources[valueSourceId], valuePathExpr);
+      injectionValue = resolved.value !== undefined
+        ? resolved.value
+        : readFlexiblePath(sources[valueSourceId], parsePathExpression(valuePathExpr)).value;
+    }
+
+    if (injectionValue === undefined) {
+      throw new Error(`Injection value path not found: ${injection.valueExpression}`);
+    }
+
+    const targets = baseAssignments.filter(a => a.sourceId === targetSourceId && !a.pathExpr);
+    if (targets.length === 0) {
+      throw new Error(`No output key is using ${targetSourceId} as an entire source for injection`);
+    }
+
+    for (const assignment of targets) {
+      setCaseInsensitivePath(assignment.data, injectionPath, structuredClone(injectionValue));
+      console.log(`[COMPOSE] Injected ${valueSourceId} into "${assignment.key}".${injectionPath.join('.')}`);
+    }
+  }
+
+  return result;
+};
+
+const trySourceArrayPrompt = (promptText, sources, sourceNames) => {
+  const text = String(promptText || '').trim();
+  const listMatch = text.match(/\[\s*@?source\s*[_-]?\s*\d+[\s\S]*?\]/i);
+  const listText = listMatch?.[0] || text;
+  if (!listText.startsWith('[') || !listText.endsWith(']')) return null;
+
+  const body = listText.slice(1, -1).trim();
+  if (!body) return [];
+
+  const result = [];
+  const entries = splitTopLevelComma(body);
+  if (entries.length === 0) return null;
+
+  for (const entry of entries) {
+    const sourceExpression = splitSourceValueExpression(entry.trim(), sourceNames);
+    if (!sourceExpression) return null;
+
+    const sourceId = resolveSourceReference(sourceExpression.sourceId, sources, sourceNames);
+    if (!sourceId || !sources[sourceId]) {
+      throw new Error(`Source not found: ${entry.trim()}`);
+    }
+
+    const pathExpression = sourceExpression.pathExpression;
+    if (pathExpression) {
+      const resolved = evaluateAdvancedPath(sources[sourceId], pathExpression);
+      if (resolved.value !== undefined) {
+        result.push(resolved.value);
+        continue;
+      }
+
+      const flexResult = readFlexiblePath(sources[sourceId], parsePathExpression(pathExpression));
+      if (flexResult.value === undefined) {
+        throw new Error(`Path not found: ${entry.trim()}`);
+      }
+      result.push(flexResult.value);
+      continue;
+    }
+
+    result.push(sources[sourceId]);
+  }
+
+  return result;
+};
+
+const splitSourceAndPathExpression = (text) => {
+  const match = String(text || '').trim().match(/@?source\s*[_-]?\s*(\d+)\b(.*)$/i);
+  if (!match) return null;
+  return {
+    sourceId: `SOURCE_${match[1]}`,
+    pathExpression: match[2].trim()
+  };
+};
+
+const tryNaturalComposePrompt = (promptText, sources, sourceNames) => {
+  const text = String(promptText || '').trim();
+  // Check for any @ reference (could be @Source N or @filename.txt)
+  if (!text || !/@/i.test(text)) return null;
+
+  // Helper to resolve source reference (file name or Source N) to SOURCE_ID
+  const resolveRef = (ref) => {
+    const cleaned = String(ref || '').trim().replace(/^@/, '');
+    // Check if it's "Source N" format
+    const sourceMatch = cleaned.match(/^source\s*[_-]?\s*(\d+)\b/i);
+    if (sourceMatch) return `SOURCE_${sourceMatch[1]}`;
+    // Check by file name
+    if (sourceNames) {
+      for (const [sourceId, sourceName] of Object.entries(sourceNames)) {
+        if (sourceName.toLowerCase() === cleaned.toLowerCase()) return sourceId;
+        // Also try without extension
+        const nameWithoutExt = sourceName.replace(/\.[^.]+$/, '');
+        if (nameWithoutExt.toLowerCase() === cleaned.toLowerCase()) return sourceId;
+      }
+    }
+    return null;
+  };
+
+  // ─────────────────────────────────────────
+  // EARLY CHECK: Simple array of sources [@Source 1, @Source 2, ...]
+  // ─────────────────────────────────────────
+  if (/^\s*\[/.test(text) && /\]\s*$/.test(text)) {
+    // Strip outer brackets and split by comma
+    const innerText = text.replace(/^\s*\[\s*/, '').replace(/\s*\]\s*$/, '');
+    const parts = innerText.split(',').map(p => p.trim());
+    const simpleSourcePattern = /^@(source\s*\d+|[^\s]+)$/i;
+    const simpleItems = [];
+    let allMatch = true;
+    
+    for (const part of parts) {
+      const match = part.match(simpleSourcePattern);
+      if (match) {
+        const sourceRef = match[1].trim();
+        const sourceId = resolveRef(sourceRef);
+        if (sourceId && sources[sourceId]) {
+          simpleItems.push(structuredClone(sources[sourceId]));
+          console.log(`[COMPOSE] Array item: ${sourceId} (entire)`);
+        } else {
+          allMatch = false;
+          break;
+        }
+      } else {
+        allMatch = false;
+        break;
+      }
+    }
+    
+    if (allMatch && simpleItems.length > 0) {
+      console.log(`[COMPOSE] Simple source array: ${simpleItems.length} items`);
+      return simpleItems;
+    }
+  }
+
+  // Detect if user wants array output: "array of objects", "list of objects", "[]", etc.
+  const wantsArray = /\b(array|list)\s+(of\s+)?(objects?|items?)\b/i.test(text) || 
+                     /^\s*\[/.test(text) || 
+                     /create\s+\[/i.test(text);
+  
+  const items = [];  // For array format
+  const result = {}; // For object format
+
+  // Split text by commas (respecting brackets)
+  const segments = [];
+  let current = '';
+  let bracketDepth = 0;
+  for (const ch of text) {
+    if (ch === '[' || ch === '{' || ch === '(') bracketDepth++;
+    if (ch === ']' || ch === '}' || ch === ')') bracketDepth--;
+    if (ch === ',' && bracketDepth === 0) {
+      segments.push(current.trim());
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) segments.push(current.trim());
+
+  // ─────────────────────────────────────────
+  // PHASE 1: Identify base assignments ("key": @source)
+  // These establish which sources are "active bases"
+  // ─────────────────────────────────────────
+  const baseAssignments = {};  // { outputKey: { sourceId, data } }
+  const activeSourceIds = new Set();  // Track which sources are used as bases
+  
+  for (const segment of segments) {
+    // Match: "key" : @source (optional complex path with operations)
+    // Supports: @Source 1 user.profile.name.sort(asc:date).filter(active=true)
+    const quotedKeyPattern = /^["']([^"']+)["']\s*:\s*@([^\s,\[]+)(?:\s+(.+))?$/i;
+    const quotedMatch = segment.match(quotedKeyPattern);
+    if (quotedMatch) {
+      const key = quotedMatch[1].trim();
+      const sourceRef = quotedMatch[2].trim();
+      const pathStr = (quotedMatch[3] || '').trim();
+      const sourceId = resolveRef(sourceRef);
+      
+      if (sourceId && sources[sourceId]) {
+        let value;
+        if (pathStr) {
+          // Use advanced path evaluation for complex expressions
+          const resolved = evaluateAdvancedPath(sources[sourceId], pathStr);
+          if (resolved.value === undefined) {
+            // Fallback to flexible path
+            const pathArr = parsePathExpression(pathStr);
+            const flexResult = readFlexiblePath(sources[sourceId], pathArr);
+            if (flexResult.value === undefined) {
+              throw new Error(`Path not found for "${key}": ${sourceId} ${pathStr}`);
+            }
+            value = structuredClone(flexResult.value);
+            console.log(`[COMPOSE] Base: "${key}" -> ${sourceId}.${flexResult.resolvedPath.join('.')}`);
+          } else {
+            value = structuredClone(resolved.value);
+            console.log(`[COMPOSE] Base: "${key}" -> ${sourceId}.${resolved.resolvedPath.join('.')}`);
+          }
+        } else {
+          value = structuredClone(sources[sourceId]);
+          console.log(`[COMPOSE] Base: "${key}" -> ${sourceId} (entire)`);
+        }
+        baseAssignments[key] = { sourceId, sourceRef, data: value };
+        activeSourceIds.add(sourceId);
+      }
+    }
+  }
+
+  // ─────────────────────────────────────────
+  // PHASE 2: Process injections (@source[path]: @value_source OR @source path.to[idx]: @value)
+  // Only inject into sources that are active bases
+  // ─────────────────────────────────────────
+  for (const segment of segments) {
+    // Pattern 1: @source[path] : @other_source (bracket immediately after source)
+    const injectionPattern1 = /@([^\s\[]+)\s*\[([^\]]+)\]\s*:\s*@([^\s,]+)/i;
+    // Pattern 2: @source path.to[idx] : @other_source (space-separated path with brackets)
+    const injectionPattern2 = /@([^\s]+)\s+([^\s:]+(?:\[[^\]]+\])?[^\s:]*)\s*:\s*@([^\s,]+)/i;
+    
+    let targetSourceRef, injectPath, valueSourceRef;
+    
+    // Try pattern 1 first (bracket key)
+    const injectionMatch1 = segment.match(injectionPattern1);
+    if (injectionMatch1) {
+      targetSourceRef = injectionMatch1[1].trim();
+      injectPath = injectionMatch1[2].trim();
+      valueSourceRef = injectionMatch1[3].trim();
+    } else {
+      // Try pattern 2 (space-separated path)
+      const injectionMatch2 = segment.match(injectionPattern2);
+      if (injectionMatch2) {
+        // Check if this looks like an injection (has brackets or dots in path)
+        const potentialPath = injectionMatch2[2].trim();
+        // Only treat as injection if the path contains [] or looks like a path injection
+        if (potentialPath.includes('[') || (potentialPath.includes('.') && !potentialPath.startsWith('"'))) {
+          targetSourceRef = injectionMatch2[1].trim();
+          injectPath = potentialPath;
+          valueSourceRef = injectionMatch2[3].trim();
+        }
+      }
+    }
+    
+    if (!targetSourceRef || !injectPath || !valueSourceRef) continue;
+    
+    const targetSourceId = resolveRef(targetSourceRef);
+    const valueSourceId = resolveRef(valueSourceRef);
+    
+    // Only process if target source is an active base
+    if (!activeSourceIds.has(targetSourceId)) {
+      console.log(`[COMPOSE] Skipped injection: @${targetSourceRef} ${injectPath} (source not used as base)`);
+      continue;
+    }
+    
+    if (!valueSourceId || !sources[valueSourceId]) {
+      console.log(`[COMPOSE] Skipped injection: value source @${valueSourceRef} not found`);
+      continue;
+    }
+    
+    // Find which base assignment uses this source and inject into it
+    for (const [outputKey, assignment] of Object.entries(baseAssignments)) {
+      if (assignment.sourceId === targetSourceId) {
+        // Inject the value into the base data at the specified path
+        const pathArr = parsePathExpression(injectPath);
+        if (pathArr.length > 0) {
+          setCaseInsensitivePath(assignment.data, pathArr, structuredClone(sources[valueSourceId]));
+          console.log(`[COMPOSE] Injected: @${valueSourceRef} -> "${outputKey}".${pathArr.join('.')}`);
+        }
+      }
+    }
+  }
+
+  // ─────────────────────────────────────────
+  // PHASE 3: Build final result from base assignments
+  // ─────────────────────────────────────────
+  if (Object.keys(baseAssignments).length > 0) {
+    for (const [key, assignment] of Object.entries(baseAssignments)) {
+      if (wantsArray) {
+        items.push({ [key]: assignment.data });
+      } else {
+        result[key] = assignment.data;
+      }
+    }
+    
+    if (wantsArray && items.length > 0) {
+      console.log(`[COMPOSE] Natural array with injections: ${items.length} items`);
+      return items;
+    }
+    if (Object.keys(result).length > 0) {
+      console.log(`[COMPOSE] Natural object with injections`);
+      return result;
+    }
+  }
+
+  // ─────────────────────────────────────────
+  // FALLBACK: Simple key-value pairs without injection logic
+  // (for cases like "key": @Source 1, "key2": @Source 2)
+  // ─────────────────────────────────────────
+  for (const segment of segments) {
+    // Skip injection patterns (already processed)
+    if (/@[^\s\[]+\s*\[/.test(segment)) continue;
+    
+    // Try: "key" : @source (with optional complex path expression)
+    const quotedKeyPattern = /["']([^"']+)["']\s*:\s*@([^\s,\[]+)(?:\s+(.+))?/i;
+    const quotedMatch = segment.match(quotedKeyPattern);
+    if (quotedMatch) {
+      const key = quotedMatch[1].trim();
+      const sourceRef = quotedMatch[2].trim();
+      const pathStr = (quotedMatch[3] || '').trim();
+      const sourceId = resolveRef(sourceRef);
+      
+      if (sourceId && sources[sourceId]) {
+        let value;
+        if (pathStr) {
+          // Use advanced path evaluation for complex expressions
+          const resolved = evaluateAdvancedPath(sources[sourceId], pathStr);
+          if (resolved.value === undefined) {
+            // Fallback to flexible path
+            const pathArr = parsePathExpression(pathStr);
+            const flexResult = readFlexiblePath(sources[sourceId], pathArr);
+            if (flexResult.value === undefined) {
+              throw new Error(`Path not found for "${key}": ${sourceId} ${pathStr}`);
+            }
+            value = flexResult.value;
+            console.log(`[COMPOSE] Natural: "${key}" -> ${sourceId}.${flexResult.resolvedPath.join('.')}`);
+          } else {
+            value = resolved.value;
+            console.log(`[COMPOSE] Natural: "${key}" -> ${sourceId}.${resolved.resolvedPath.join('.')}`);
+          }
+        } else {
+          value = sources[sourceId];
+          console.log(`[COMPOSE] Natural: "${key}" -> ${sourceId} (entire)`);
+        }
+        if (wantsArray) {
+          items.push({ [key]: value });
+        } else {
+          result[key] = value;
+        }
+        continue;
+      }
+    }
+    
+    // Try: [key] : @source (with optional complex path)
+    const simpleBracketPattern = /\[([^\]]+)\]\s*:\s*@([^\s,]+)(?:\s+(.+))?/i;
+    const simpleBracketMatch = segment.match(simpleBracketPattern);
+    if (simpleBracketMatch) {
+      const key = simpleBracketMatch[1].trim();
+      const sourceRef = simpleBracketMatch[2].trim();
+      const pathStr = (simpleBracketMatch[3] || '').trim();
+      const sourceId = resolveRef(sourceRef);
+      
+      if (sourceId && sources[sourceId]) {
+        let value;
+        if (pathStr) {
+          // Use advanced path evaluation
+          const resolved = evaluateAdvancedPath(sources[sourceId], pathStr);
+          if (resolved.value === undefined) {
+            const pathArr = parsePathExpression(pathStr);
+            const flexResult = readFlexiblePath(sources[sourceId], pathArr);
+            if (flexResult.value === undefined) continue;
+            value = flexResult.value;
+            console.log(`[COMPOSE] Natural: "${key}" -> ${sourceId}.${flexResult.resolvedPath.join('.')} (bracket key)`);
+          } else {
+            value = resolved.value;
+            console.log(`[COMPOSE] Natural: "${key}" -> ${sourceId}.${resolved.resolvedPath.join('.')} (bracket key)`);
+          }
+        } else {
+          value = sources[sourceId];
+          console.log(`[COMPOSE] Natural: "${key}" -> ${sourceId} (entire, bracket key)`);
+        }
+        if (wantsArray) {
+          items.push({ [key]: value });
+        } else {
+          result[key] = value;
+        }
+        continue;
+      }
+    }
+  }
+  
+  // ─────────────────────────────────────────
+  // SIMPLE ARRAY OF SOURCES: [@Source 1, @Source 2, ...]
+  // No keys, just sources listed in array format
+  // ─────────────────────────────────────────
+  if (wantsArray && items.length === 0) {
+    console.log(`[DEBUG] Checking simple array pattern. Segments:`, segments);
+    // Pattern to match @Source N with optional brackets and spaces
+    const simpleSourcePattern = /^\[?\s*@(source\s*\d+|[^\s,\]]+)\s*\]?$/i;
+    for (const segment of segments) {
+      const match = segment.match(simpleSourcePattern);
+      console.log(`[DEBUG] Segment "${segment}" match:`, match);
+      if (match) {
+        const sourceRef = match[1].trim();
+        const sourceId = resolveRef(sourceRef);
+        console.log(`[DEBUG] sourceRef="${sourceRef}" -> sourceId="${sourceId}"`);
+        if (sourceId && sources[sourceId]) {
+          items.push(structuredClone(sources[sourceId]));
+          console.log(`[COMPOSE] Array item: ${sourceId} (entire)`);
+        }
+      }
+    }
+    if (items.length > 0) {
+      console.log(`[COMPOSE] Simple source array: ${items.length} items`);
+      return items;
+    }
+  }
+
+  if (wantsArray && items.length > 0) {
+    console.log(`[COMPOSE] Natural array composition: ${items.length} items`);
+    return items;
+  }
+  if (Object.keys(result).length > 0) {
+    return result;
+  }
+
+  return null;
+};
 
 const extractDynamicQuery = (promptText) => {
   const text = String(promptText || '').trim();
@@ -1534,11 +2649,7 @@ const executeUnifiedPipeline = async (plan, sources, sourceNames) => {
  * Generate and execute a unified pipeline using AI
  */
 const runUnifiedPipeline = async (prompt, sources, sourceNames, openai) => {
-  // Compress sources for AI
-  const compressedInput = Object.entries(sources).map(([id, obj]) => {
-    const name = sourceNames[id] || id;
-    return `### DATA SOURCE: ${name} (ID: ${id})\n${JSON.stringify(compressJson(obj), null, 2)}`;
-  }).join('\n\n');
+  const { sourceReferenceGuide, compressedSources } = buildAiSourceContext(sources, sourceNames);
 
   // Call AI to generate complete pipeline plan
   const completion = await openai.chat.completions.create({
@@ -1547,7 +2658,7 @@ const runUnifiedPipeline = async (prompt, sources, sourceNames, openai) => {
       { role: 'system', content: PIPELINE_INSTRUCTIONS },
       {
         role: 'user',
-        content: `## USER PROMPT\n${prompt}\n\n## DATA SOURCES (schema only - keys preserved, values replaced with type placeholders)\n${compressedInput}`
+        content: `## USER PROMPT\n${prompt}\n\n## SOURCE REFERENCES\n${sourceReferenceGuide}\n\n## DATA SOURCES (schema only - keys preserved, values replaced with type placeholders)\n${compressedSources}`
       }
     ],
     response_format: { type: 'json_object' },
@@ -1582,7 +2693,7 @@ const runUnifiedPipeline = async (prompt, sources, sourceNames, openai) => {
     mode: 'unified_pipeline',
     plan: plan,
     pipelineLog,
-    data: result
+    data: stripInternalOutputFields(result)
   };
 };
 
@@ -1638,16 +2749,13 @@ const executePipeline = async (ops, sources, sourceNames, prompt, openai) => {
   // ── STAGE 1: MERGE ──────────────────────────
   if (ops.merge.length > 0) {
     const mergePrompt = ops.merge.join('\n');
-    const compressedInput = Object.entries(sources).map(([id, obj]) => {
-      const name = sourceNames[id] || id;
-      return `### DATA SOURCE: ${name} (ID: ${id})\n${JSON.stringify(compressJson(obj), null, 2)}`;
-    }).join('\n\n');
+    const { sourceReferenceGuide, compressedSources } = buildAiSourceContext(sources, sourceNames);
 
     const completion = await openai.chat.completions.create({
       model: AI_MODEL_MERGE,
       messages: [
         { role: 'system', content: MERGE_INSTRUCTIONS },
-        { role: 'user', content: `## USER PROMPT\n${mergePrompt}\n\n## DATA SOURCES\n${compressedInput}` }
+        { role: 'user', content: `## USER PROMPT\n${mergePrompt}\n\n## SOURCE REFERENCES\n${sourceReferenceGuide}\n\n## DATA SOURCES\n${compressedSources}` }
       ],
       response_format: { type: 'json_object' },
       temperature: 0,
@@ -1669,17 +2777,13 @@ const executePipeline = async (ops, sources, sourceNames, prompt, openai) => {
   if (ops.join.length > 0) {
     const joinSources = result ? { MERGED: result, ...sources } : sources;
     const joinSourceNames = result ? { MERGED: 'Merged Result', ...sourceNames } : sourceNames;
-
-    const compressedInput = Object.entries(joinSources).map(([id, obj]) => {
-      const name = joinSourceNames[id] || id;
-      return `### DATA SOURCE: ${name} (ID: ${id})\n${JSON.stringify(compressJson(obj), null, 2)}`;
-    }).join('\n\n');
+    const { sourceReferenceGuide, compressedSources } = buildAiSourceContext(joinSources, joinSourceNames);
 
     const joinCompletion = await openai.chat.completions.create({
       model: AI_MODEL_MERGE,
       messages: [
         { role: 'system', content: JOIN_INSTRUCTIONS },
-        { role: 'user', content: `## USER PROMPT\n${ops.join.join('\n')}\n\n## DATA SOURCES\n${compressedInput}` }
+        { role: 'user', content: `## USER PROMPT\n${ops.join.join('\n')}\n\n## SOURCE REFERENCES\n${sourceReferenceGuide}\n\n## DATA SOURCES\n${compressedSources}` }
       ],
       response_format: { type: 'json_object' },
       temperature: 0,
@@ -1719,7 +2823,7 @@ const executePipeline = async (ops, sources, sourceNames, prompt, openai) => {
 
   applyPromptTransforms(result, prompt);
 
-  return { mode: 'pipeline', pipeline: pipelineLog, data: result };
+  return { mode: 'pipeline', pipeline: pipelineLog, data: stripInternalOutputFields(result) };
 };
 
 // ─────────────────────────────────────────────
@@ -1748,7 +2852,6 @@ app.post('/api/convert', upload.array('files'), async (req, res) => {
   // Build source registry
   const sources = {};
   const sourceNames = {};
-  const optimizedBlocks = [];
 
   for (let i = 0; i < parsedInputs.length; i++) {
     const input = parsedInputs[i] || {};
@@ -1774,10 +2877,21 @@ app.post('/api/convert', upload.array('files'), async (req, res) => {
     sourceNames[sourceId] = name;
     const clean = JSON.stringify(parsed, null, 2);
     console.log(`[SOURCE] ${sourceId} = ${name} (${clean.length} chars)`);
-    optimizedBlocks.push(`### DATA SOURCE: ${name} (ID: ${sourceId})\n${clean}`);
   }
 
-  const optimizedInput = optimizedBlocks.join('\n\n');
+  try {
+    const sourceArray = trySourceArrayPrompt(prompt, sources, sourceNames);
+    if (sourceArray) {
+      console.log('[COMPOSE] Direct source array from prompt');
+      return res.json(sourceArray);
+    }
+  } catch (sourceArrayErr) {
+    console.error('[SOURCE ARRAY ERROR]', sourceArrayErr.message);
+    return res.status(400).json({
+      error: 'Source array composition failed',
+      details: sourceArrayErr.message
+    });
+  }
 
   try {
     // ─────────────────────────────────────────
@@ -1785,120 +2899,65 @@ app.post('/api/convert', upload.array('files'), async (req, res) => {
     // These are so simple they don't need LLM
     // ─────────────────────────────────────────
 
-    const bareSourceMatch = prompt.trim().match(/^@?source\s*(\d+)\s*$/i);
-    if (bareSourceMatch) {
-      const sourceNum = Number(bareSourceMatch[1]);
-      const sourceId = `SOURCE_${sourceNum}`;
-      if (sources[sourceId]) {
-        console.log(`[BARE SOURCE] Returning ${sourceId} directly`);
-        return res.json(sources[sourceId]);
+    // ─────────────────────────────────────────
+    // SIMPLE OBJECT FORMAT - { key: @source, key2: @source path }
+    // Direct object construction without LLM
+    // ─────────────────────────────────────────
+    
+    // ─────────────────────────────────────────
+    try {
+      const sourceArray = trySourceArrayPrompt(prompt, sources, sourceNames);
+      if (sourceArray) {
+        console.log('[COMPOSE] Direct source array from prompt');
+        return res.json(sourceArray);
       }
+
+      const composedObject = tryObjectCompositionPrompt(prompt, sources, sourceNames);
+      if (composedObject) {
+        console.log('[COMPOSE] Direct object composition from prompt');
+        return res.json(composedObject);
+      }
+    } catch (composeErr) {
+      if (/(?:^|[,\r\n])\s*["']?[A-Za-z0-9_-]+["']?\s*:\s*@/i.test(prompt)) {
+        console.error('[COMPOSE ERROR]', composeErr.message);
+        return res.status(400).json({
+          error: 'Object composition failed',
+          details: composeErr.message,
+          hint: 'Check that the referenced source and path exist.'
+        });
+      }
+      console.log('[COMPOSE] Direct composition failed, falling through:', composeErr.message);
     }
 
-    // ─────────────────────────────────────────
+    try {
+      const naturalComposedObject = tryNaturalComposePrompt(prompt, sources, sourceNames);
+      if (naturalComposedObject) {
+        console.log('[COMPOSE] Natural object composition from prompt');
+        return res.json(naturalComposedObject);
+      }
+    } catch (naturalErr) {
+      // Fall through to LLM instead of returning error
+      console.log('[NATURAL COMPOSE] Failed, falling through:', naturalErr.message);
+    }
+
     // LLM-POWERED PROMPT UNDERSTANDING
     // All other prompts go through LLM for understanding
+    // Instructions loaded from external file for easy modification
     // ─────────────────────────────────────────
 
-    console.log(`[LLM] Enhancing prompt: "${prompt}"`);
-    
-    // Build compressed schema for LLM
-    const compressedSources = Object.entries(sources).map(([id, obj]) => {
-      const name = sourceNames[id] || id;
-      return `### ${name} (ID: ${id})\n${JSON.stringify(compressJson(obj), null, 2)}`;
-    }).join('\n\n');
+    console.log(`[LLM] Planning request from prompt: "${prompt}"`);
+    const { sourceReferenceGuide, compressedSources } = buildAiSourceContext(sources, sourceNames);
 
-    // Ask LLM to understand the prompt and return a structured plan
-    const understandingPrompt = `You are a JSON data assistant. Analyze what the user wants and return a JSON execution plan.
+    // Build understanding prompt dynamically from external instructions file
+    const understandingPrompt = `${UNDERSTANDING_INSTRUCTIONS}
 
 USER REQUEST: ${prompt}
 
+SOURCE REFERENCE DIRECTORY:
+${sourceReferenceGuide}
+
 AVAILABLE DATA SOURCES:
-${compressedSources}
-
-ACTIONS YOU CAN RETURN:
-
-1. EXTRACT - Get data from a specific path in a source
-{ "action": "extract", "source_id": "SOURCE_N", "path": ["key1", "key2", ...], "description": "..." }
-- Use empty path [] to get entire source
-- Use "index": N to get Nth element from array
-
-2. COLLECT - Gather all arrays with a specific name into one flat array  
-{ "action": "collect", "source_id": "SOURCE_N", "array_name": "arrayName", "description": "..." }
-
-3. COMPOSE - Build a NEW custom object with user-defined keys
-{ "action": "compose", "parts": [
-  { "key": "userDefinedKey", "source_id": "SOURCE_N", "type": "collect|path|entire", "array_name": "...", "path": [...] }
-], "description": "..." }
-- type "collect": gather all arrays named array_name
-- type "path": extract from specific path  
-- type "entire": include entire source
-
-4. QUERY - Filter/sort/group/count/unique/select/aggregate operations
-{ "action": "query", "operations": [
-  { "op": "group", "collection": "tasks", "by": "status" },
-  { "op": "group", "collection": "products", "by": "pricing.currency", "exclude_fields": ["reserved"] },
-  { "op": "group", "collection": "players", "by": "profile.stats.rank.tier", "sort_by": "score", "sort_order": "desc" },
-  { "op": "group", "collection": "tasks", "by": "status", "nested_group": { "by": "employee.role" } },
-  { "op": "filter", "collection": "departments", "field": "name", "value": "Engineering" },
-  { "op": "sort", "collection": "items", "field": "price", "order": "desc" },
-  { "op": "count", "collection": "tasks", "by": "status" },
-  { "op": "unique", "collection": "tasks", "field": "status" },
-  { "op": "select", "collection": "users", "fields": ["name", "email"] },
-  { "op": "sum", "collection": "orders", "field": "amount" },
-  { "op": "avg", "collection": "products", "field": "price" },
-  { "op": "limit", "collection": "results", "count": 10 }
-] }
-
-OPERATION TYPES:
-- "group": Group items by field. Supports nested paths, sorting within groups, field exclusions.
-- "filter": Keep items matching condition. field + value required.
-- "sort": Sort collection by field. order = "asc" or "desc".
-- "count": Count items per unique value of a field. Returns { counts: { value1: N, value2: M } }.
-- "unique": Get distinct values of a field. Returns { values: [...] }.
-- "select": Project only specific fields from items.
-- "sum": Sum numeric values of a field.
-- "avg": Calculate average of numeric field.
-- "limit": Limit results to N items.
-
-GROUP OPERATION SYNTAX:
-- "by": Field to group by. Supports nested paths like "profile.stats.rank.tier"
-- "exclude_fields": Fields to remove. Supports nested paths like ["contact.phone"]
-- "sort_by" + "sort_order": Sort items within each group
-- "nested_group": { "by": "field" } - Group again inside each group
-
-COLLECTION PATH PATTERNS:
-- "Group company.departments.projects.modules.tasks by status" → collection = "tasks", by = "status"
-- "Group products by pricing.currency" → collection = "products", by = "pricing.currency"
-- "without medications" → exclude_fields = ["medications"]
-- "Count tasks by status" → op = "count", collection = "tasks", by = "status"
-- "Get unique status from tasks" → op = "unique", collection = "tasks", field = "status"
-
-5. MERGE - Combine entire source structures into one tree
-{ "action": "merge", "description": "..." }
-
-6. ERROR - When request is unclear or field doesn't exist
-{ "action": "error", "message": "..." }
-
-DECISION LOGIC:
-- "count X by Y" or "how many X per Y" → QUERY with op="count"
-- "unique/distinct values of X" → QUERY with op="unique"
-- "sum/total of X" → QUERY with op="sum"
-- "average of X" → QUERY with op="avg"
-- "first N" or "limit N" → QUERY with op="limit"
-- User wants to GROUP/FILTER/SORT data → QUERY
-- User wants to BUILD/CREATE a new object with specific keys → COMPOSE
-- User wants to get/access specific data from one source → EXTRACT  
-- User wants all instances of X combined into one array → COLLECT
-- User wants to EMBED/ADD sources into each other at specific paths → MERGE
-- User mentions multiple sources with hierarchical embedding instructions → MERGE
-- User specifies a "main object" or "root" with other sources to be added → MERGE
-- Look at the DATA SOURCES schema to find correct paths
-- @Source 1, @Source1, Source 1 = SOURCE_1
-- Be flexible with key names - find closest match in schema
-- If a field doesn't exist, still try the operation - let the executor handle gracefully
-
-Return ONLY valid JSON.`;
+${compressedSources}`;
 
     const understandingResponse = await openai.chat.completions.create({
       model: AI_MODEL_LIGHT,
@@ -1975,13 +3034,7 @@ Return ONLY valid JSON.`;
             }
           }
           if (result !== undefined) {
-            // Return with the key name for context
-            const lastKey = plan.path[plan.path.length - 1];
-            if (isPlainObject(data)) {
-              const actualKey = Object.keys(data).find(k => k.toLowerCase() === lastKey.toLowerCase()) || lastKey;
-              return res.json({ [actualKey]: result });
-            }
-            return res.json(result);
+            return res.json(stripInternalOutputFields(result));
           }
           return res.status(400).json({ error: `Path not found: ${plan.path.join('.')}` });
         }
@@ -2021,17 +3074,61 @@ Return ONLY valid JSON.`;
       // COMPOSE action - build custom object from parts of multiple sources
       if (plan.action === 'compose' && Array.isArray(plan.parts)) {
         const result = {};
+        const composeSources = {};
+        for (const [id, source] of Object.entries(sources)) {
+          composeSources[id] = structuredClone(source);
+        }
+
+        if (Array.isArray(plan.mutations)) {
+          for (const mutation of plan.mutations) {
+            const targetSourceId = mutation.target_source_id || mutation.source_id;
+            const valueSourceId = mutation.value_source_id;
+
+            if (!composeSources[targetSourceId]) {
+              return res.status(400).json({
+                error: `Mutation target source ${targetSourceId} not found`,
+                available: Object.keys(composeSources).map(id => id.replace('SOURCE_', 'Source '))
+              });
+            }
+
+            if (!composeSources[valueSourceId]) {
+              return res.status(400).json({
+                error: `Mutation value source ${valueSourceId} not found`,
+                available: Object.keys(composeSources).map(id => id.replace('SOURCE_', 'Source '))
+              });
+            }
+
+            const mutationPath = mutation.path || mutation.target_path;
+            if (!Array.isArray(mutationPath) || mutationPath.length === 0) {
+              return res.status(400).json({ error: `Mutation path is required for ${targetSourceId}` });
+            }
+
+            const value = mutation.value_type === 'path' && Array.isArray(mutation.value_path)
+              ? readFlexiblePath(composeSources[valueSourceId], mutation.value_path).value
+              : composeSources[valueSourceId];
+
+            if (value === undefined) {
+              return res.status(400).json({
+                error: `Mutation value path not found in ${valueSourceId}`,
+                path: mutation.value_path
+              });
+            }
+
+            setCaseInsensitivePath(composeSources[targetSourceId], mutationPath, structuredClone(value));
+            console.log(`[COMPOSE] Mutated ${targetSourceId}.${mutationPath.join('.')} from ${valueSourceId}`);
+          }
+        }
 
         for (const part of plan.parts) {
           const sourceId = part.source_id;
-          if (!sources[sourceId]) {
+          if (!composeSources[sourceId]) {
             return res.status(400).json({
               error: `Source ${sourceId} not found for key "${part.key}"`,
-              available: Object.keys(sources).map(id => id.replace('SOURCE_', 'Source '))
+              available: Object.keys(composeSources).map(id => id.replace('SOURCE_', 'Source '))
             });
           }
 
-          const data = sources[sourceId];
+          const data = composeSources[sourceId];
 
           if (part.type === 'collect') {
             // Collect all arrays matching the name
@@ -2049,20 +3146,9 @@ Return ONLY valid JSON.`;
 
           } else if (part.type === 'path' && Array.isArray(part.path)) {
             // Extract from specific path
-            let value = data;
-            for (const seg of part.path) {
-              if (value === null || value === undefined) break;
-              if (isPlainObject(value)) {
-                const actualKey = Object.keys(value).find(k => k.toLowerCase() === seg.toLowerCase());
-                value = actualKey ? value[actualKey] : value[seg];
-              } else if (Array.isArray(value) && !isNaN(Number(seg))) {
-                value = value[Number(seg)];
-              } else {
-                value = value[seg];
-              }
-            }
+            const { value, resolvedPath } = readFlexiblePath(data, part.path);
             result[part.key] = value !== undefined ? value : null;
-            console.log(`[COMPOSE] ${part.key}: extracted from path ${part.path.join('.')}`);
+            console.log(`[COMPOSE] ${part.key}: extracted from path ${part.path.join('.')} resolved as ${resolvedPath.join('.')}`);
 
           } else if (part.type === 'entire') {
             // Include entire source
@@ -2075,7 +3161,7 @@ Return ONLY valid JSON.`;
           }
         }
 
-        return res.json(result);
+        return res.json(stripInternalOutputFields(result));
       }
 
       // QUERY action - convert to legacy format and continue
@@ -2092,7 +3178,7 @@ Return ONLY valid JSON.`;
           if (!IS_PROD) {
             await fs.writeFile(path.join(process.cwd(), 'debug_pipeline.json'), JSON.stringify(pipelineResult, null, 2)).catch(() => {});
           }
-          return res.json(pipelineResult.data || pipelineResult);
+          return res.json(stripInternalOutputFields(pipelineResult.data || pipelineResult));
         }
         
         const dynamicQueries = plan.operations.map(op => ({
@@ -2113,13 +3199,16 @@ Return ONLY valid JSON.`;
           const allResults = executeAllOps(dynamicQueries, sources);
           if (allResults.length === 1) {
             const r = allResults[0];
-            return res.json({
-              mode: `dynamic_${r.query.operation}`,
-              query: r.query,
-              results: r.results
-            });
+            if (r.results.length === 1) {
+              const { source_id, ...payload } = r.results[0];
+              return res.json(payload);
+            }
+            return res.json(r.results.map(({ source_id, ...payload }) => payload));
           }
-          return res.json({ mode: 'multi_operation', operations: allResults });
+          return res.json(allResults.map(r => ({
+            operation: r.query.operation,
+            results: r.results.map(({ source_id, ...payload }) => payload)
+          })));
         }
       }
 
@@ -2141,17 +3230,13 @@ Return ONLY valid JSON.`;
         if (!IS_PROD) {
           await fs.writeFile(path.join(process.cwd(), 'debug_pipeline.json'), JSON.stringify(pipelineResult, null, 2)).catch(() => {});
         }
-        return res.json(pipelineResult.result || pipelineResult);
+        return res.json(stripInternalOutputFields(pipelineResult.data || pipelineResult));
       }
       
       // JOIN action - LLM decided this is a join operation
       if (plan.action === 'join') {
         console.log('[LLM] Join action detected, proceeding to join planner');
-        
-        const compressedInput = Object.entries(sources).map(([id, obj]) => {
-          const name = sourceNames[id] || id;
-          return `### DATA SOURCE: ${name} (ID: ${id})\n${JSON.stringify(compressJson(obj), null, 2)}`;
-        }).join('\n\n');
+        const { sourceReferenceGuide, compressedSources } = buildAiSourceContext(sources, sourceNames);
 
         const joinCompletion = await openai.chat.completions.create({
           model: AI_MODEL_MERGE,
@@ -2159,7 +3244,7 @@ Return ONLY valid JSON.`;
             { role: 'system', content: JOIN_INSTRUCTIONS },
             {
               role: 'user',
-              content: `## USER PROMPT\n${prompt}\n\n## DATA SOURCES (schema)\n${compressedInput}`
+              content: `## USER PROMPT\n${prompt}\n\n## SOURCE REFERENCES\n${sourceReferenceGuide}\n\n## DATA SOURCES (schema)\n${compressedSources}`
             }
           ],
           response_format: { type: 'json_object' },
@@ -2184,7 +3269,7 @@ Return ONLY valid JSON.`;
         try {
           const joinResult = executeJoinPlan(joinPlan, sources);
           if (!IS_PROD) await fs.writeFile(path.join(process.cwd(), 'debug_plan.json'), JSON.stringify(joinPlan, null, 2)).catch(() => {});
-          return res.json(joinResult);
+          return res.json(stripInternalOutputFields(joinResult));
         } catch (execErr) {
           return res.status(500).json({ error: 'Join execution failed', details: execErr.message });
         }
@@ -2203,7 +3288,7 @@ Return ONLY valid JSON.`;
       if (!IS_PROD) {
         await fs.writeFile(path.join(process.cwd(), 'debug_pipeline.json'), JSON.stringify(pipelineResult, null, 2)).catch(() => {});
       }
-      return res.json(pipelineResult.result || pipelineResult);
+      return res.json(stripInternalOutputFields(pipelineResult.data || pipelineResult));
     } catch (pipeErr) {
       console.error('[UNIFIED PIPELINE ERROR]', pipeErr.message);
       return res.status(500).json({ error: 'Pipeline execution failed', details: pipeErr.message });
@@ -2220,5 +3305,16 @@ Return ONLY valid JSON.`;
 });
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
+
+// Serve syntax guide for frontend
+app.get('/api/syntax-guide', async (req, res) => {
+  try {
+    const guidePath = path.join(process.cwd(), 'syntax_guide.json');
+    const guideContent = await fs.readFile(guidePath, 'utf-8');
+    res.json(JSON.parse(guideContent));
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to load syntax guide', details: error.message });
+  }
+});
 
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));

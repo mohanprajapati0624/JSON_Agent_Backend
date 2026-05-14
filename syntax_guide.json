@@ -1,0 +1,212 @@
+{
+  "title": "JSON Architect - Prompt Syntax",
+  "sections": [
+    {
+      "id": "sources",
+      "title": "Accessing Sources",
+      "examples": [
+        {
+          "syntax": "@Source 1",
+          "description": "Returns entire JSON from Source 1"
+        },
+        {
+          "syntax": "@filename.txt",
+          "description": "Reference source by file name directly"
+        },
+        {
+          "syntax": "@Source 1 user.name",
+          "description": "Gets user.name from Source 1"
+        },
+        {
+          "syntax": "@doc.txt users[0]",
+          "description": "Gets first item in users array from doc.txt"
+        },
+        {
+          "syntax": "@Source 1 data.items[2].id",
+          "description": "Deep nested path access"
+        }
+      ]
+    },
+    {
+      "id": "flexible-paths",
+      "title": "Flexible Path Access",
+      "description": "System auto-finds keys in nested structures",
+      "examples": [
+        {
+          "syntax": "@Source 1 level_7",
+          "description": "Finds level_7 anywhere in hierarchy (e.g., project.level_1.level_2...level_7)"
+        },
+        {
+          "syntax": "@Source 1 stage_3.maps",
+          "description": "Finds stage_3 first, then gets .maps from it"
+        }
+      ]
+    },
+    {
+      "id": "compose-object",
+      "title": "Creating Objects",
+      "examples": [
+        {
+          "syntax": "{\n  \"key1\": @Source 1\n  \"key2\": @Source 2 user.name\n}",
+          "description": "Multi-line object composition",
+          "output": "{ \"key1\": {...}, \"key2\": \"value\" }"
+        },
+        {
+          "syntax": "\"name\": @Source 1 user.name, \"email\": @Source 2 user.email",
+          "description": "Single-line comma-separated",
+          "output": "{ \"name\": \"...\", \"email\": \"...\" }"
+        },
+        {
+          "syntax": "[key1]: @Source 1, [key2]: @Source 2",
+          "description": "Simple bracket keys",
+          "output": "{ \"key1\": {...}, \"key2\": {...} }"
+        }
+      ]
+    },
+    {
+      "id": "injection",
+      "title": "Injection Syntax",
+      "description": "Inject one source INTO another source at a specific path",
+      "examples": [
+        {
+          "syntax": "\"demo\": @doc5.txt, @doc5.txt[menu]: @doc3.txt",
+          "description": "Inject doc3.txt INTO doc5.txt at 'menu' path",
+          "output": "{ \"demo\": { ...doc5, \"menu\": {...doc3} } }"
+        },
+        {
+          "syntax": "\"base\": @Source 1, @Source 1[data]: @Source 2",
+          "description": "Source 2 injected into Source 1 at 'data' path",
+          "output": "{ \"base\": { ...Source1, \"data\": {...Source2} } }"
+        },
+        {
+          "syntax": "@doc4.txt[key]: @other.txt",
+          "description": "IGNORED if doc4.txt is not used as a base",
+          "output": "(no output - source not active)"
+        }
+      ]
+    },
+    {
+      "id": "compose-array",
+      "title": "Creating Arrays",
+      "examples": [
+        {
+          "syntax": "array of objects with \"main1\": @Source 1, \"main2\": @Source 2",
+          "description": "Creates array of objects",
+          "output": "[{\"main1\": {...}}, {\"main2\": {...}}]"
+        },
+        {
+          "syntax": "list of objects with \"a\": @Source 1, \"b\": @Source 2",
+          "description": "Alternative keyword",
+          "output": "[{\"a\": {...}}, {\"b\": {...}}]"
+        }
+      ]
+    },
+    {
+      "id": "array-operations",
+      "title": "Array Operations",
+      "description": "Filter, sort, slice, and transform arrays dynamically",
+      "examples": [
+        {
+          "syntax": "@Source 1 users[status=active]",
+          "description": "Filter: where status equals 'active'",
+          "output": "[{...active users...}]"
+        },
+        {
+          "syntax": "@Source 1 items.filter(price>100)",
+          "description": "Filter: where price > 100",
+          "output": "[{...expensive items...}]"
+        },
+        {
+          "syntax": "@Source 1 users.sort(asc:name)",
+          "description": "Sort ascending by name",
+          "output": "[{sorted by name A-Z}]"
+        },
+        {
+          "syntax": "@Source 1 orders.sort(desc:date)",
+          "description": "Sort descending by date",
+          "output": "[{newest first}]"
+        },
+        {
+          "syntax": "@Source 1 items.slice(0,5)",
+          "description": "Get first 5 items",
+          "output": "[{first 5 items}]"
+        },
+        {
+          "syntax": "@Source 1 items.first(3)",
+          "description": "Get first 3 items",
+          "output": "[{first 3}]"
+        },
+        {
+          "syntax": "@Source 1 items.last",
+          "description": "Get last item",
+          "output": "{last item}"
+        },
+        {
+          "syntax": "@Source 1 users.count",
+          "description": "Get count of items",
+          "output": "42"
+        },
+        {
+          "syntax": "@Source 1 items.reverse",
+          "description": "Reverse array order",
+          "output": "[{reversed}]"
+        },
+        {
+          "syntax": "@Source 1 users[*].name",
+          "description": "Extract 'name' from all users",
+          "output": "[\"Alice\", \"Bob\", ...]"
+        },
+        {
+          "syntax": "@Source 1 users.filter(active=true).sort(asc:name).first(10)",
+          "description": "Chain: filter → sort → limit",
+          "output": "[{top 10 active users sorted}]"
+        }
+      ]
+    },
+    {
+      "id": "path-operators",
+      "title": "Path Operators",
+      "operators": [
+        {
+          "operator": ".",
+          "example": "user.name",
+          "description": "Access object property"
+        },
+        {
+          "operator": "[n]",
+          "example": "items[0]",
+          "description": "Access array index (0-based)"
+        },
+        {
+          "operator": "[*]",
+          "example": "users[*].name",
+          "description": "Get property from all array items"
+        }
+      ]
+    }
+  ],
+  "quickExamples": [
+    {
+      "title": "Extract Fields",
+      "prompt": "{\n  \"userName\": @Source 1 user.name\n  \"userAge\": @Source 1 user.age\n}",
+      "result": "{\"userName\": \"John\", \"userAge\": 30}"
+    },
+    {
+      "title": "Combine Sources",
+      "prompt": "{\n  \"company\": @Source 1\n  \"staff\": @Source 2 employees\n}",
+      "result": "{\"company\": {...}, \"staff\": [...]}"
+    },
+    {
+      "title": "Array Output",
+      "prompt": "array of objects with \"task\": @Source 1, \"game\": @Source 2",
+      "result": "[{\"task\": {...}}, {\"game\": {...}}]"
+    }
+  ],
+  "tips": [
+    "Use \"key\" or 'key' (quotes) around keys in compose prompts",
+    "Flexible paths auto-find nested keys - just use the final key name",
+    "Say \"array of objects\" to get [{}, {}] format instead of {}",
+    "Source 1, SOURCE_1, source 1 all work the same",
+    "Spaces around : and , are optional"
+  ]
+}
