@@ -43,7 +43,30 @@ ACTIONS YOU CAN RETURN:
 - type "path": extract from specific path  
 - type "entire": include entire source
 - "mutations" are applied first to temporary copies of the sources. The final "parts" must read from those updated temporary sources.
-- Example: "create main object as key Herosection inside put @Source 1; in @Source 1 groupedTasksByStatus.menu as @Source 3" means:
+
+CASCADING EMBED PATTERN (CRITICAL):
+When user says "add @B under path_X in @A" or "path_X ni under @B add karo":
+- target_source_id = @A (the source containing path_X)
+- value_source_id = @B (the source to embed)
+- path = FULL path to path_X in @A's schema
+
+For chained embeds like:
+  "@doc2 main object. depth_7 under @mohandemo add. @mohandemo level_5 under @doc3 add."
+This means:
+1. doc2 is the root/main
+2. Embed mohandemo INTO doc2 at depth_7 path
+3. Embed doc3 INTO mohandemo at level_5 path
+Execute in REVERSE order so inner embeds happen first:
+  mutations[0]: embed doc3 into mohandemo at level_5
+  mutations[1]: embed mohandemo (now containing doc3) into doc2 at depth_7
+  parts: return doc2 as the final result
+
+IMPORTANT: For nested keys like "depth_7", trace the FULL path through the schema!
+If schema is: { "userProfile": { "depth_1": { "depth_2": { ... "depth_7": {} } } } }
+The path must be: ["userProfile", "depth_1", "depth_2", "depth_3", "depth_4", "depth_5", "depth_6", "depth_7"]
+NOT just: ["depth_7"]
+
+Example: "create main object as key Herosection inside put @Source 1; in @Source 1 groupedTasksByStatus.menu as @Source 3" means:
   { "action": "compose", "mutations": [{ "target_source_id": "SOURCE_1", "path": ["groupedTasksByStatus", "menu"], "value_source_id": "SOURCE_3", "value_type": "entire" }], "parts": [{ "key": "Herosection", "source_id": "SOURCE_1", "type": "entire" }] }
   Do NOT create sibling keys "groupedTasksByStatus" or "menu" in the output for this pattern.
 

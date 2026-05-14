@@ -53,40 +53,40 @@
                               }
                             }
                           }
-                        }
-                      },
-                      "platformId": "ECOM_9001",
-                      "platformName": "MegaCart",
-                      "regions": {
-                        "india": {
-                          "warehouses": {
-                            "gujarat": {
-                              "cities": {
-                                "surat": {
-                                  "inventory": {
-                                    "electronics": {
-                                      "mobiles": {
-                                        "apple": {
-                                          "iphone_15": {
-                                            "variants": {
-                                              "black_256": {
-                                                "supplier": {
-                                                  "supplierId": "SUP_001",
-                                                  "shipping": {
-                                                    "domestic": {
-                                                      "express": {
-                                                        "tracking": {
-                                                          "liveStatus": {
-                                                            "hub": {
-                                                              "vehicle": {
-                                                                "driver": {
-                                                                  "performance": {
-                                                                    "ratings": {
-                                                                      "monthly": {
-                                                                        "march": {
-                                                                          "week3": {
-                                                                            "deliveries": {
-                                                                              "completed": 340
+                        },
+                        "platformId": "ECOM_9001",
+                        "platformName": "MegaCart",
+                        "regions": {
+                          "india": {
+                            "warehouses": {
+                              "gujarat": {
+                                "cities": {
+                                  "surat": {
+                                    "inventory": {
+                                      "electronics": {
+                                        "mobiles": {
+                                          "apple": {
+                                            "iphone_15": {
+                                              "variants": {
+                                                "black_256": {
+                                                  "supplier": {
+                                                    "supplierId": "SUP_001",
+                                                    "shipping": {
+                                                      "domestic": {
+                                                        "express": {
+                                                          "tracking": {
+                                                            "liveStatus": {
+                                                              "hub": {
+                                                                "vehicle": {
+                                                                  "driver": {
+                                                                    "performance": {
+                                                                      "ratings": {
+                                                                        "monthly": {
+                                                                          "march": {
+                                                                            "week3": {
+                                                                              "deliveries": {
+                                                                                "completed": 340
+                                                                              }
                                                                             }
                                                                           }
                                                                         }
@@ -95,35 +95,35 @@
                                                                   }
                                                                 }
                                                               }
-                                                            }
-                                                          },
-                                                          "cloudProvider": "NeuroCloud",
-                                                          "regions": {
-                                                            "asia": {
-                                                              "india": {
-                                                                "datacenters": {
-                                                                  "dc_mumbai_01": {
-                                                                    "clusters": {
-                                                                      "cluster_alpha": {
-                                                                        "servers": {
-                                                                          "server_88": {
-                                                                            "containers": {
-                                                                              "kubernetes": {
-                                                                                "pods": {
-                                                                                  "ai_training": {
-                                                                                    "models": {
-                                                                                      "gpt_custom": {
-                                                                                        "training": {
-                                                                                          "epochs": {
-                                                                                            "epoch_40": {
-                                                                                              "metrics": {
-                                                                                                "loss": {
-                                                                                                  "validation": {
-                                                                                                    "historical": {
-                                                                                                      "daily": {
-                                                                                                        "hourly": {
-                                                                                                          "minuteWise": {
-                                                                                                            "accuracy": 98.4
+                                                            },
+                                                            "cloudProvider": "NeuroCloud",
+                                                            "regions": {
+                                                              "asia": {
+                                                                "india": {
+                                                                  "datacenters": {
+                                                                    "dc_mumbai_01": {
+                                                                      "clusters": {
+                                                                        "cluster_alpha": {
+                                                                          "servers": {
+                                                                            "server_88": {
+                                                                              "containers": {
+                                                                                "kubernetes": {
+                                                                                  "pods": {
+                                                                                    "ai_training": {
+                                                                                      "models": {
+                                                                                        "gpt_custom": {
+                                                                                          "training": {
+                                                                                            "epochs": {
+                                                                                              "epoch_40": {
+                                                                                                "metrics": {
+                                                                                                  "loss": {
+                                                                                                    "validation": {
+                                                                                                      "historical": {
+                                                                                                        "daily": {
+                                                                                                          "hourly": {
+                                                                                                            "minuteWise": {
+                                                                                                              "accuracy": 98.4
+                                                                                                            }
                                                                                                           }
                                                                                                         }
                                                                                                       }
@@ -177,10 +177,10 @@
       }
     }
   },
-  "__depth_count": 54,
+  "__depth_count": 55,
   "__finalAnalytics": {
     "name": "finalAnalytics",
-    "timestamp": "2026-05-14T10:46:02.955Z",
+    "timestamp": "2026-05-14T10:56:16.709Z",
     "include": [
       "counts",
       "groups",
@@ -212,7 +212,7 @@
     },
     {
       "op": "depth_count",
-      "maxDepth": 54
+      "maxDepth": 55
     },
     {
       "op": "deduplicate",

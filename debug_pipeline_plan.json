@@ -11,7 +11,7 @@
           "action": "embed",
           "parent_source_id": "SOURCE_1",
           "child_source_id": "SOURCE_2",
-          "anchor_path": ["company", "engineering", "projects", "project_alpha"],
+          "anchor_path": ["company", "headOffice", "building", "floors", "floor_1", "departments", "engineering", "teams", "backend", "projects", "project_alpha", "modules"],
           "embed_mode": "merge_keys"
         }
       ]
@@ -19,13 +19,13 @@
     {
       "stage": 2,
       "type": "merge",
-      "description": "Attach cloud monitoring logs inside supplier shipping tracking",
+      "description": "Attach cloud monitoring logs inside tracking",
       "steps": [
         {
           "action": "embed",
           "parent_source_id": "SOURCE_2",
           "child_source_id": "SOURCE_5",
-          "anchor_path": ["regions", "india", "warehouses", "gujarat", "cities", "surat", "inventory", "electronics", "mobiles", "apple", "iphone_15", "variants", "black_256", "supplier", "shipping", "tracking"],
+          "anchor_path": ["regions", "india", "warehouses", "gujarat", "cities", "surat", "inventory", "electronics", "mobiles", "apple", "iphone_15", "variants", "black_256", "supplier", "shipping", "domestic", "express", "tracking"],
           "embed_mode": "merge_keys"
         }
       ]
