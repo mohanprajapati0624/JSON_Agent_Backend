@@ -1,0 +1,27 @@
+{
+  "name": "json_convertor_backend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.5.1",
+    "multer": "^2.1.1",
+    "openai": "^6.37.0"
+  },
+  "devDependencies": {
+    "form-data": "^4.0.5",
+    "nodemon": "^3.1.14"
+  }
+}

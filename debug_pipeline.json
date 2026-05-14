@@ -1,0 +1,413 @@
+{
+  "mode": "unified_pipeline",
+  "plan": {
+    "mode": "pipeline",
+    "root_source_id": "SOURCE_5",
+    "stages": [
+      {
+        "stage": 1,
+        "type": "merge",
+        "description": "Add depth_7 under userProfile",
+        "steps": [
+          {
+            "action": "embed",
+            "parent_source_id": "SOURCE_5",
+            "child_source_id": "SOURCE_1",
+            "anchor_path": [
+              "userProfile",
+              "depth_1",
+              "depth_2",
+              "depth_3",
+              "depth_4",
+              "depth_5",
+              "depth_6",
+              "depth_7"
+            ],
+            "embed_mode": "merge_keys"
+          }
+        ]
+      },
+      {
+        "stage": 2,
+        "type": "merge",
+        "description": "Add level_5 under mohandemo",
+        "steps": [
+          {
+            "action": "embed",
+            "parent_source_id": "SOURCE_1",
+            "child_source_id": "SOURCE_4",
+            "anchor_path": [
+              "project",
+              "level_1",
+              "level_2",
+              "level_3",
+              "level_4",
+              "level_5"
+            ],
+            "embed_mode": "merge_keys"
+          }
+        ]
+      },
+      {
+        "stage": 3,
+        "type": "merge",
+        "description": "Add node_9 under doc3",
+        "steps": [
+          {
+            "action": "embed",
+            "parent_source_id": "SOURCE_4",
+            "child_source_id": "SOURCE_3",
+            "anchor_path": [
+              "ecommerce",
+              "node_1",
+              "node_2",
+              "node_3",
+              "node_4",
+              "node_5",
+              "node_6",
+              "node_7",
+              "node_8",
+              "node_9"
+            ],
+            "embed_mode": "merge_keys"
+          }
+        ]
+      },
+      {
+        "stage": 4,
+        "type": "merge",
+        "description": "Add stage_8 under doc4",
+        "steps": [
+          {
+            "action": "embed",
+            "parent_source_id": "SOURCE_3",
+            "child_source_id": "SOURCE_2",
+            "anchor_path": [
+              "gamingServer",
+              "stage_1",
+              "stage_2",
+              "stage_3",
+              "stage_4",
+              "stage_5",
+              "stage_6",
+              "stage_7",
+              "stage_8"
+            ],
+            "embed_mode": "merge_keys"
+          }
+        ]
+      },
+      {
+        "stage": 5,
+        "type": "transform",
+        "description": "Create grouped analytics object",
+        "operations": [
+          {
+            "op": "group",
+            "collection": "analytics",
+            "by": "enabled"
+          }
+        ]
+      }
+    ]
+  },
+  "pipelineLog": [
+    {
+      "stage": 1,
+      "type": "merge",
+      "steps": 1,
+      "status": "collected"
+    },
+    {
+      "stage": 2,
+      "type": "merge",
+      "steps": 1,
+      "status": "collected"
+    },
+    {
+      "stage": 3,
+      "type": "merge",
+      "steps": 1,
+      "status": "collected"
+    },
+    {
+      "stage": 4,
+      "type": "merge",
+      "steps": 1,
+      "status": "collected"
+    },
+    {
+      "stage": "merge_consolidated",
+      "type": "merge",
+      "steps": 4,
+      "status": "success"
+    },
+    {
+      "stage": 5,
+      "type": "transform",
+      "operations": 1,
+      "status": "success"
+    }
+  ],
+  "data": {
+    "userProfile": {
+      "depth_1": {
+        "username": "chintan_dev",
+        "depth_2": {
+          "personal": {
+            "age": 25
+          },
+          "depth_3": {
+            "skills": [
+              "React",
+              "Next.js"
+            ],
+            "depth_4": {
+              "experience": {
+                "years": 3
+              },
+              "depth_5": {
+                "preferences": {
+                  "theme": "dark"
+                },
+                "depth_6": {
+                  "devices": {
+                    "primary": "MacBook"
+                  },
+                  "depth_7": {
+                    "subscriptions": {
+                      "chatgpt": true
+                    },
+                    "depth_8": {
+                      "socials": {
+                        "linkedin": "active"
+                      },
+                      "depth_9": {
+                        "achievements": {
+                          "hackathons": 5
+                        },
+                        "depth_10": {
+                          "futureGoals": {
+                            "role": "SDE2",
+                            "location": "Dubai"
+                          }
+                        }
+                      }
+                    },
+                    "project": {
+                      "level_1": {
+                        "id": "PRJ-001",
+                        "level_2": {
+                          "name": "AI Workflow Engine",
+                          "level_3": {
+                            "environment": "production",
+                            "level_4": {
+                              "region": "ap-south-1",
+                              "level_5": {
+                                "services": {
+                                  "auth": true,
+                                  "db": true
+                                },
+                                "level_6": {
+                                  "database": {
+                                    "type": "postgresql",
+                                    "version": "16"
+                                  },
+                                  "level_7": {
+                                    "cache": {
+                                      "enabled": true,
+                                      "provider": "redis"
+                                    },
+                                    "level_8": {
+                                      "monitoring": {
+                                        "tool": "grafana"
+                                      },
+                                      "level_9": {
+                                        "alerts": {
+                                          "email": true,
+                                          "slack": true
+                                        },
+                                        "level_10": {
+                                          "deployment": {
+                                            "strategy": "blue-green",
+                                            "status": "active"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                "ecommerce": {
+                                  "node_1": {
+                                    "store": "TechWorld",
+                                    "node_2": {
+                                      "categories": [
+                                        "laptop",
+                                        "mobile"
+                                      ],
+                                      "node_3": {
+                                        "inventory": {
+                                          "count": 500
+                                        },
+                                        "node_4": {
+                                          "warehouse": {
+                                            "city": "Ahmedabad"
+                                          },
+                                          "node_5": {
+                                            "shipping": {
+                                              "partner": "Delhivery"
+                                            },
+                                            "node_6": {
+                                              "payments": {
+                                                "upi": true
+                                              },
+                                              "node_7": {
+                                                "offers": {
+                                                  "festival": "Diwali"
+                                                },
+                                                "node_8": {
+                                                  "analytics": {
+                                                    "enabled": true
+                                                  },
+                                                  "node_9": {
+                                                    "fraudDetection": {
+                                                      "status": "running"
+                                                    },
+                                                    "node_10": {
+                                                      "backup": {
+                                                        "frequency": "daily"
+                                                      }
+                                                    },
+                                                    "gamingServer": {
+                                                      "stage_1": {
+                                                        "game": "CyberArena",
+                                                        "stage_2": {
+                                                          "playersOnline": 1200,
+                                                          "stage_3": {
+                                                            "maps": [
+                                                              "desert",
+                                                              "snow"
+                                                            ],
+                                                            "stage_4": {
+                                                              "ranking": {
+                                                                "mode": "competitive"
+                                                              },
+                                                              "stage_5": {
+                                                                "antiCheat": {
+                                                                  "enabled": true
+                                                                },
+                                                                "stage_6": {
+                                                                  "voiceChat": {
+                                                                    "provider": "discord"
+                                                                  },
+                                                                  "stage_7": {
+                                                                    "events": {
+                                                                      "weekendCup": true
+                                                                    },
+                                                                    "stage_8": {
+                                                                      "mods": {
+                                                                        "supported": true
+                                                                      },
+                                                                      "stage_9": {
+                                                                        "streaming": {
+                                                                          "twitchIntegration": true
+                                                                        },
+                                                                        "stage_10": {
+                                                                          "serverScaling": {
+                                                                            "autoScale": true
+                                                                          }
+                                                                        }
+                                                                      },
+                                                                      "blockchainNetwork": {
+                                                                        "chain_1": {
+                                                                          "network": "Polygon",
+                                                                          "chain_2": {
+                                                                            "rpc": {
+                                                                              "url": "https://rpc.polygon.io"
+                                                                            },
+                                                                            "chain_3": {
+                                                                              "contracts": {
+                                                                                "erc20": true
+                                                                              },
+                                                                              "chain_4": {
+                                                                                "wallets": {
+                                                                                  "metamask": true
+                                                                                },
+                                                                                "chain_5": {
+                                                                                  "tokens": {
+                                                                                    "count": 120
+                                                                                  },
+                                                                                  "chain_6": {
+                                                                                    "validators": {
+                                                                                      "active": 100
+                                                                                    },
+                                                                                    "chain_7": {
+                                                                                      "staking": {
+                                                                                        "enabled": true
+                                                                                      },
+                                                                                      "chain_8": {
+                                                                                        "bridges": {
+                                                                                          "ethereum": true
+                                                                                        },
+                                                                                        "chain_9": {
+                                                                                          "security": {
+                                                                                            "audit": "passed"
+                                                                                          },
+                                                                                          "chain_10": {
+                                                                                            "governance": {
+                                                                                              "dao": "enabled"
+                                                                                            }
+                                                                                          }
+                                                                                        }
+                                                                                      }
+                                                                                    }
+                                                                                  }
+                                                                                }
+                                                                              }
+                                                                            }
+                                                                          }
+                                                                        }
+                                                                      }
+                                                                    }
+                                                                  }
+                                                                }
+                                                              }
+                                                            }
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "__transforms": [
+      {
+        "op": "group",
+        "collection": "analytics",
+        "by": "enabled",
+        "groups": {}
+      }
+    ]
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "mode": "dynamic_group",
+  "operation": "group",
+  "collection": "employees",
+  "groupBy": "role",
+  "groups": {
+    "Senior Dev": [
+      {
+        "empId": "E1",
+        "name": "Alice",
+        "role": "Senior Dev",
+        "salary": 120000,
+        "skills": [
+          "Node.js",
+          "Python"
+        ]
+      },
+      {
+        "empId": "E3",
+        "name": "Charlie",
+        "role": "Senior Dev",
+        "salary": 130000,
+        "skills": [
+          "Go",
+          "Rust"
+        ]
+      },
+      {
+        "empId": "E8",
+        "name": "Hank",
+        "role": "Senior Dev",
+        "salary": 105000,
+        "skills": [
+          "CRM"
+        ]
+      }
+    ],
+    "Junior Dev": [
+      {
+        "empId": "E2",
+        "name": "Bob",
+        "role": "Junior Dev",
+        "salary": 75000,
+        "skills": [
+          "Node.js"
+        ]
+      },
+      {
+        "empId": "E5",
+        "name": "Eve",
+        "role": "Junior Dev",
+        "salary": 70000,
+        "skills": [
+          "React"
+        ]
+      },
+      {
+        "empId": "E9",
+        "name": "Ivy",
+        "role": "Junior Dev",
+        "salary": 65000,
+        "skills": [
+          "Communication"
+        ]
+      }
+    ],
+    "Lead Dev": [
+      {
+        "empId": "E4",
+        "name": "Diana",
+        "role": "Lead Dev",
+        "salary": 140000,
+        "skills": [
+          "React",
+          "TypeScript"
+        ]
+      }
+    ],
+    "Manager": [
+      {
+        "empId": "E6",
+        "name": "Frank",
+        "role": "Manager",
+        "salary": 110000,
+        "skills": [
+          "SEO",
+          "Analytics"
+        ]
+      }
+    ],
+    "Specialist": [
+      {
+        "empId": "E7",
+        "name": "Grace",
+        "role": "Specialist",
+        "salary": 85000,
+        "skills": [
+          "Content",
+          "SEO"
+        ]
+      }
+    ]
+  }
+}

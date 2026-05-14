@@ -1,0 +1,13 @@
+{
+  "plan_type": "query",
+  "source_ids": [
+    "SOURCE_1"
+  ],
+  "operations": [
+    {
+      "op": "group",
+      "collection": "employees",
+      "by": "role"
+    }
+  ]
+}

@@ -1,0 +1,169 @@
+SYSTEM:
+# JSON TRANSFORMATION PLANNER
+
+You output a machine-readable transformation plan as JSON. Node.js executes the plan — you do NOT output the final merged JSON.
+
+## INPUT
+- A standardized English instruction describing how to merge/embed JSON sources.
+- Data sources labeled SOURCE_1, SOURCE_2, etc. with their JSON structure (values may be truncated but all keys are preserved).
+
+## OUTPUT
+Return ONLY valid JSON. No markdown, no explanations.
+
+### For merge/embed:
+{
+  "plan_version": 1,
+  "root_source_id": "SOURCE_X",
+  "steps": [
+    {
+      "step": 1,
+      "action": "embed",
+      "parent_source_id": "SOURCE_X",
+      "anchor_path": ["key1", "nested_key"],
+      "child_source_id": "SOURCE_Y",
+      "embed_mode": "merge_keys"
+    }
+  ],
+  "verification": { "single_root_required": true }
+}
+
+### For extract:
+{ "mode": "extract", "source_id": "SOURCE_X", "path": ["key1", "key2"] }
+
+## FIELD RULES
+- root_source_id: The source that becomes the final output root.
+- anchor_path: Array of strings — exact key path in the parent source to the container object where child gets merged. Compute by inspecting the actual JSON keys.
+- embed_mode: Always "merge_keys" — child's top-level keys merge as sibling properties into the anchor container. Do NOT wrap under a new key.
+- Each source appears exactly once (as root or as a child in one step).
+
+## REQUIREMENTS
+- Compute exact anchor_path by inspecting the provided JSON structure keys.
+- Preserve merge order from the user prompt.
+- Ignore grouping, sorting, indexing, or metadata requests — only plan embeds.
+
+## ON ERROR
+If the prompt lacks a clear root source or embed target:
+{ "plan_version": 1, "error": { "message": "Describe what is missing" } }
+
+
+USER:
+append @mohandemo.txt to depth_7 in @doc2.txt
+append @doc3.txt to level_5 in @mohandemo.txt
+append @doc4.txt to node_9 in @doc3.txt
+append @doc5.txt to stage_8 in @doc4.txt
+append @Source1 to report in @Source1
+append @Source2 to engineering.products in @Source2
+
+SOURCES:
+### DATA SOURCE: Source 1 (ID: SOURCE_1)
+[
+  {
+    "password": "<str>",
+    "timezone": "<str>",
+    "username": "<str>",
+    "book_after": "<str>",
+    "book_before": "<str>",
+    "property_code": "<str>",
+    "reservation_filters": "<str>"
+  }
+]
+
+### DATA SOURCE: Source 2 (ID: SOURCE_2)
+{
+  "finalAnalytics": {
+    "company": {
+      "companyId": "<str>",
+      "companyName": "<str>",
+      "engineering": {
+        "projects": {
+          "project_alpha": {
+            "ecommerceInventory": {
+              "inventoryId": "<str>",
+              "products": [
+                {
+                  "productId": "<str>",
+                  "name": "<str>",
+                  "completedDeliveries": 0,
+                  "supplier": {
+                    "supplierId": "<str>",
+                    "tracking": {
+                      "liveStatus": "<str>",
+                      "cloudMonitoring": {
+                        "server": "<str>",
+                        "aiTraining": {
+                          "model": "<str>",
+                          "metrics": {
+                            "accuracy": 0,
+                            "loss": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "hrDepartment": {
+        "employees": [
+          {
+            "employeeId": "<str>",
+            "name": "<str>",
+            "mappedStudent": {
+              "studentId": "<str>",
+              "course": "<str>",
+              "semester": 0,
+              "marks": 0
+            }
+          }
+        ]
+      }
+    },
+    "bankingFraudAnalytics": {
+      "verifiedTransactions": [
+        {
+          "transactionId": "<str>",
+          "amount": 0,
+          "status": "<str>",
+          "fraudDetection": {
+            "riskScore": 0,
+            "aiDecision": "<str>"
+          }
+        }
+      ]
+    },
+    "monthlyAnalytics": {
+      "march_2026": {
+        "deliveries": 0,
+        "transactions": 0,
+        "verifiedPayments": 0,
+        "averageAccuracy": 0
+      }
+    },
+    "sorting": {
+      "deliveriesSorted": [
+        {
+          "productId": "<str>",
+          "completedDeliveries": 0
+        }
+      ],
+      "accuracySorted": [
+        {
+          "model": "<str>",
+          "accuracy": 0
+        }
+      ]
+    },
+    "metadata": {
+      "recursiveDepth": 0,
+      "flattenedKeys": [
+        "<str>"
+      ],
+      "duplicatesRemoved": {
+        "suppliers": 0
+      }
+    }
+  }
+}
