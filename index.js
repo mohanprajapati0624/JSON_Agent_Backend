@@ -3268,6 +3268,67 @@ ${compressedSources}`;
         return res.json(combinedResults);
       }
 
+      // LEFT_JOIN action - join arrays with field replacement on match
+      if (plan.action === 'left_join') {
+        console.log('[LLM] Left join action: matching and replacing fields');
+        
+        const baseSource = sources[plan.base_source_id];
+        const lookupSource = sources[plan.lookup_source_id];
+        
+        if (!baseSource || !lookupSource) {
+          return res.status(400).json({ error: 'Source not found for left join' });
+        }
+        
+        // Find the base and lookup collections
+        const baseItems = findCollectionItems({ _: baseSource }, plan.base_collection || '');
+        const lookupItems = findCollectionItems({ _: lookupSource }, plan.lookup_collection || '');
+        
+        // If no collection specified, use root if it's an array
+        const baseArr = baseItems.length > 0 ? baseItems : (Array.isArray(baseSource) ? baseSource : [baseSource]);
+        const lookupArr = lookupItems.length > 0 ? lookupItems : (Array.isArray(lookupSource) ? lookupSource : [lookupSource]);
+        
+        const matchField = plan.match_field || 'id';
+        const replaceFields = plan.replace_fields || [];
+        
+        // Build lookup map for efficient matching
+        const lookupMap = new Map();
+        for (const item of lookupArr) {
+          const matchValue = getNestedValue(item, matchField);
+          if (matchValue !== undefined) {
+            lookupMap.set(String(matchValue).toLowerCase(), item);
+          }
+        }
+        
+        // Process base items
+        const results = baseArr.map(baseItem => {
+          const matchValue = getNestedValue(baseItem, matchField);
+          const matchKey = matchValue !== undefined ? String(matchValue).toLowerCase() : null;
+          const lookupItem = matchKey ? lookupMap.get(matchKey) : null;
+          
+          if (lookupItem) {
+            // Match found - replace specified fields
+            const result = { ...baseItem };
+            for (const field of replaceFields) {
+              const lookupValue = getNestedValue(lookupItem, field);
+              if (lookupValue !== undefined) {
+                result[field] = lookupValue;
+              }
+            }
+            return result;
+          } else {
+            // No match - return original item
+            return { ...baseItem };
+          }
+        });
+        
+        console.log(`[LEFT_JOIN] Processed ${results.length} items, matched ${results.filter((r, i) => {
+          const mv = getNestedValue(baseArr[i], matchField);
+          return mv !== undefined && lookupMap.has(String(mv).toLowerCase());
+        }).length}`);
+        
+        return res.json(results);
+      }
+
       // QUERY action - convert to legacy format and continue
       if (plan.action === 'query' && Array.isArray(plan.operations)) {
         // For complex operations (nested grouping, sorting within groups), use pipeline

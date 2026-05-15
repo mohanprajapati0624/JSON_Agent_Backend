@@ -134,6 +134,28 @@ OR use multi-operation query (simpler, both selects run on all sources, results 
 }
 IMPORTANT: Preserve "as alias" in fields - do NOT strip it! If user writes "address.building as name", keep it as "address.building as name" in the fields array.
 
+LEFT JOIN WITH FIELD REPLACEMENT:
+When user wants to join two arrays and replace fields from the second source when matched:
+{
+  "action": "left_join",
+  "base_source_id": "SOURCE_1",
+  "base_collection": "items",
+  "lookup_source_id": "SOURCE_2", 
+  "lookup_collection": "items",
+  "match_field": "city",
+  "replace_fields": ["name"],
+  "description": "From Source1 items, if city matches Source2 city, use Source2's name"
+}v
+
+Example prompts:
+- "from @Source1, if city matches @Source2 city, use name from @Source2"
+- "left join @Source1 with @Source2 on city, replace name"
+- "match @Source1 city with @Source2 city, take name from @Source2 if match"
+Behavior:
+- For each item in base_collection, check if match_field exists in lookup_collection
+- If match found: replace the specified fields with values from lookup item
+- If no match: keep original item unchanged
+
 5. MERGE - Combine entire source structures into one tree
 { "action": "merge", "description": "..." }
 
