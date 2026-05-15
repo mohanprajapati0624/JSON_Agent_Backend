@@ -1513,12 +1513,26 @@ const extractDynamicQuery = (promptText) => {
     return { operation: 'sort', collection: sortMatch[1], field: sortMatch[2], order: sortMatch[3].toLowerCase(), excludeFields };
 
   // ── SELECT ───────────────────────────────────
+  // Supports: select field1, field2 as alias from collection
   const selectMatch = text.match(
     /select\s+(.+?)\s+from\s+([a-zA-Z0-9_.-]+)/i
   );
   if (selectMatch) {
-    const fields = selectMatch[1].split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
-    return { operation: 'select', fields, collection: selectMatch[2], excludeFields };
+    const fieldParts = selectMatch[1].split(/,/).map(s => s.trim()).filter(Boolean);
+    const fields = [];
+    const rename = [];
+    for (const part of fieldParts) {
+      // Check for "field as alias" pattern
+      const asMatch = part.match(/^([a-zA-Z0-9_.]+)\s+as\s+([a-zA-Z0-9_]+)$/i);
+      if (asMatch) {
+        fields.push(asMatch[1].trim());
+        rename.push(asMatch[2].trim());
+      } else {
+        fields.push(part.replace(/\s+/g, ''));
+        rename.push(null);
+      }
+    }
+    return { operation: 'select', fields, rename, collection: selectMatch[2], excludeFields };
   }
 
   // ── COUNT ────────────────────────────────────
@@ -1807,14 +1821,33 @@ const execSort = (root, { collection, field, order }) => {
   return { operation: 'sort', collection, field, order, count: sorted.length, results: sorted };
 };
 
-const execSelect = (root, { collection, fields }) => {
+const execSelect = (root, { collection, fields, rename }) => {
   const items = findCollectionItems({ _: root }, collection);
-  const fieldsLower = fields.map(f => f.toLowerCase());
   const projected = items.map(item => {
     const out = {};
-    for (const f of fieldsLower) {
-      const key = Object.keys(item).find(k => k.toLowerCase() === f);
-      if (key) out[key] = item[key];
+    for (let i = 0; i < fields.length; i++) {
+      let f = fields[i];
+      let outKey = (rename && rename[i]) ? rename[i] : null;
+      
+      // Parse "field as alias" syntax if present in the field string
+      const asMatch = f.match(/^(.+?)\s+as\s+([a-zA-Z0-9_]+)$/i);
+      if (asMatch) {
+        f = asMatch[1].trim();
+        outKey = outKey || asMatch[2].trim();
+      }
+      
+      // Check if this is a nested path (contains dot)
+      if (f.includes('.')) {
+        const value = getNestedValue(item, f);
+        // Use outKey if set, otherwise use last segment of path
+        outKey = outKey || f.split('.').pop();
+        if (value !== undefined) out[outKey] = value;
+      } else {
+        // Direct key lookup (case-insensitive)
+        const key = Object.keys(item).find(k => k.toLowerCase() === f.toLowerCase());
+        outKey = outKey || key || f;
+        if (key) out[outKey] = item[key];
+      }
     }
     return out;
   });
@@ -3164,6 +3197,34 @@ ${compressedSources}`;
         return res.json(stripInternalOutputFields(result));
       }
 
+      // MULTI_SELECT action - combine select results from multiple sources into single array
+      if (plan.action === 'multi_select' && Array.isArray(plan.selects)) {
+        console.log('[LLM] Multi-select action: combining results from multiple sources');
+        const combinedResults = [];
+        
+        for (const sel of plan.selects) {
+          const sourceObj = sources[sel.source_id];
+          if (!sourceObj) {
+            console.log(`[MULTI_SELECT] Source ${sel.source_id} not found, skipping`);
+            continue;
+          }
+          
+          const selectQuery = {
+            operation: 'select',
+            collection: sel.collection,
+            fields: sel.fields || []
+          };
+          
+          const result = execSelect(sourceObj, selectQuery);
+          if (result.results && result.results.length > 0) {
+            combinedResults.push(...result.results);
+          }
+        }
+        
+        console.log(`[MULTI_SELECT] Combined ${combinedResults.length} items from ${plan.selects.length} sources`);
+        return res.json(combinedResults);
+      }
+
       // QUERY action - convert to legacy format and continue
       if (plan.action === 'query' && Array.isArray(plan.operations)) {
         // For complex operations (nested grouping, sorting within groups), use pipeline
@@ -3197,13 +3258,43 @@ ${compressedSources}`;
 
         if (dynamicQueries.length > 0) {
           const allResults = executeAllOps(dynamicQueries, sources);
+          
+          // If all operations are select, combine all results into single flat array
+          const allAreSelect = dynamicQueries.every(q => q.operation === 'select');
+          if (allAreSelect && allResults.length > 1) {
+            const combined = [];
+            for (const r of allResults) {
+              for (const { source_id, ...payload } of r.results) {
+                if (payload.results && payload.results.length > 0) {
+                  // Filter out empty objects (no matched fields)
+                  const nonEmpty = payload.results.filter(item => Object.keys(item).length > 0);
+                  combined.push(...nonEmpty);
+                }
+              }
+            }
+            console.log(`[QUERY] Combined ${combined.length} items from ${allResults.length} select operations`);
+            return res.json(combined);
+          }
+          
           if (allResults.length === 1) {
             const r = allResults[0];
             if (r.results.length === 1) {
               const { source_id, ...payload } = r.results[0];
+              // For select/filter/sort/unique operations, return just the results array
+              if (payload.results && ['select', 'filter', 'sort', 'unique', 'limit'].includes(payload.operation)) {
+                // Filter out empty objects
+                const filtered = payload.results.filter(item => Object.keys(item).length > 0);
+                return res.json(filtered);
+              }
               return res.json(payload);
             }
-            return res.json(r.results.map(({ source_id, ...payload }) => payload));
+            return res.json(r.results.map(({ source_id, ...payload }) => {
+              if (payload.results && ['select', 'filter', 'sort', 'unique', 'limit'].includes(payload.operation)) {
+                // Filter out empty objects
+                return payload.results.filter(item => Object.keys(item).length > 0);
+              }
+              return payload;
+            }).flat());
           }
           return res.json(allResults.map(r => ({
             operation: r.query.operation,

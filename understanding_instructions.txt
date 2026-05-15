@@ -110,6 +110,30 @@ COLLECTION PATH PATTERNS:
 - "Count tasks by status" → op = "count", collection = "tasks", by = "status"
 - "Get unique status from tasks" → op = "unique", collection = "tasks", field = "status"
 
+MULTI-SOURCE SELECT (combine results into single array):
+When user wants to select from multiple sources and combine into one array:
+{
+  "action": "multi_select",
+  "selects": [
+    { "source_id": "SOURCE_1", "collection": "company.headOffice.addresses", "fields": ["address.building as name"] },
+    { "source_id": "SOURCE_2", "collection": "hospital.branches", "fields": ["location.city as name"] }
+  ],
+  "description": "Combine address buildings from Source1 and city names from Source2 into single array"
+}
+Example prompts:
+- "select X from @Source1, select Y from @Source2 both in single array"
+- "combine: select X from @Source1, select Y from @Source2"
+- "[select X from @Source1, select Y from @Source2]"
+OR use multi-operation query (simpler, both selects run on all sources, results combined):
+{
+  "action": "query",
+  "operations": [
+    { "op": "select", "collection": "company.headOffice.addresses", "fields": ["address.building as name"] },
+    { "op": "select", "collection": "hospital.branches", "fields": ["location.city as name"] }
+  ]
+}
+IMPORTANT: Preserve "as alias" in fields - do NOT strip it! If user writes "address.building as name", keep it as "address.building as name" in the fields array.
+
 5. MERGE - Combine entire source structures into one tree
 { "action": "merge", "description": "..." }
 
