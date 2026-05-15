@@ -1836,17 +1836,60 @@ const execSelect = (root, { collection, fields, rename }) => {
         outKey = outKey || asMatch[2].trim();
       }
       
+      // Check for root-level access with $ prefix (e.g., $company.name)
+      const isRootAccess = f.startsWith('$');
+      if (isRootAccess) {
+        f = f.slice(1); // Remove $ prefix
+        const value = getNestedValue(root, f);
+        outKey = outKey || f.split('.').pop();
+        out[outKey] = value !== undefined ? value : null;
+        continue;
+      }
+      
       // Check if this is a nested path (contains dot)
       if (f.includes('.')) {
-        const value = getNestedValue(item, f);
+        let value = getNestedValue(item, f);
+        // Fallback: try root if not found in item
+        if (value === undefined) {
+          value = getNestedValue(root, f);
+        }
         // Use outKey if set, otherwise use last segment of path
         outKey = outKey || f.split('.').pop();
-        if (value !== undefined) out[outKey] = value;
+        // Always include key, use null if value not found (null fallback)
+        out[outKey] = value !== undefined ? value : null;
       } else {
-        // Direct key lookup (case-insensitive)
-        const key = Object.keys(item).find(k => k.toLowerCase() === f.toLowerCase());
+        // Direct key lookup (case-insensitive) - first in item, then in root
+        let key = Object.keys(item).find(k => k.toLowerCase() === f.toLowerCase());
+        let value = key ? item[key] : undefined;
+        
+        // Fallback: try root-level lookup if not in item
+        if (value === undefined && isPlainObject(root)) {
+          // First try direct key on root
+          const rootKey = Object.keys(root).find(k => k.toLowerCase() === f.toLowerCase());
+          if (rootKey) {
+            value = root[rootKey];
+            key = rootKey;
+          } else {
+            // Search recursively in root for the field name
+            const searchInObject = (obj, targetKey) => {
+              if (!isPlainObject(obj)) return undefined;
+              for (const k of Object.keys(obj)) {
+                if (k.toLowerCase() === targetKey.toLowerCase()) return obj[k];
+                if (isPlainObject(obj[k])) {
+                  const found = searchInObject(obj[k], targetKey);
+                  if (found !== undefined) return found;
+                }
+              }
+              return undefined;
+            };
+            value = searchInObject(root, f);
+            if (value !== undefined) key = f;
+          }
+        }
+        
         outKey = outKey || key || f;
-        if (key) out[outKey] = item[key];
+        // Always include key, use null if value not found
+        out[outKey] = value !== undefined ? value : null;
       }
     }
     return out;
